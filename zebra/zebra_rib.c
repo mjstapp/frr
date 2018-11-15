@@ -1877,7 +1877,7 @@ done:
 /*
  * Route-update results processing after async dataplane update.
  */
-static void rib_process_after(struct zebra_dplane_ctx *ctx)
+static void rib_process_result(struct zebra_dplane_ctx *ctx)
 {
 	struct route_table *table = NULL;
 	struct zebra_vrf *zvrf = NULL;
@@ -3255,11 +3255,14 @@ void rib_close_table(struct route_table *table)
 }
 
 /*
- *
+ * Handle results from the dataplane system. Dequeue update context
+ * structs, dispatch to appropriate internal handlers.
  */
 static int rib_process_dplane_results(struct thread *thread)
 {
 	struct zebra_dplane_ctx *ctx;
+
+	/* TODO -- dequeue a list with one lock/unlock cycle? */
 
 	do {
 		/* Take lock controlling queue of results */
@@ -3270,10 +3273,28 @@ static int rib_process_dplane_results(struct thread *thread)
 		}
 		pthread_mutex_unlock(&dplane_mutex);
 
-		if (ctx)
-			rib_process_after(ctx);
-		else
+		if (ctx == NULL)
 			break;
+
+		switch (dplane_ctx_get_op(ctx)) {
+
+		case DPLANE_OP_ROUTE_INSTALL:
+		case DPLANE_OP_ROUTE_UPDATE:
+		case DPLANE_OP_ROUTE_DELETE:
+			rib_process_result(ctx);
+			break;
+
+		case DPLANE_OP_LSP_INSTALL:
+		case DPLANE_OP_LSP_UPDATE:
+		case DPLANE_OP_LSP_DELETE:
+			zebra_mpls_lsp_dplane_result(ctx);
+			break;
+
+		default:
+			/* Don't expect this: just return the struct? */
+			dplane_ctx_fini(&ctx);
+			break;
+		} /* Dispatch by op code */
 
 	} while (1);
 
