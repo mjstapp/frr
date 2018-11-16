@@ -218,6 +218,12 @@ static struct zebra_dplane_globals {
 	/* Ordered list of providers */
 	TAILQ_HEAD(zdg_prov_q, zebra_dplane_provider) dg_providers_q;
 
+	/* Free list of contexts */
+	TAILQ_HEAD(zdg_free_ctx_q, zebra_dplane_ctx) dg_free_ctx_q;
+	_Atomic uint32_t dg_free_ctx_count;
+
+#define DPLANE_FREE_CTX_LIMIT 1000
+
 	/* Counter used to assign internal ids to providers */
 	uint32_t dg_provider_id;
 
@@ -291,12 +297,25 @@ struct thread_master *dplane_get_thread_master(void)
  */
 static struct zebra_dplane_ctx *dplane_ctx_alloc(void)
 {
-	struct zebra_dplane_ctx *p;
+	struct zebra_dplane_ctx *p = NULL;
 
 	/* TODO -- just alloc'ing memory, but would like to maintain
 	 * a pool
 	 */
-	p = XCALLOC(MTYPE_DP_CTX, sizeof(struct zebra_dplane_ctx));
+
+	DPLANE_LOCK();
+
+	p = TAILQ_FIRST(&(zdplane_info.dg_free_ctx_q));
+	if (p) {
+		TAILQ_REMOVE(&(zdplane_info.dg_free_ctx_q), p, zd_q_entries);
+		memset(p, 0, sizeof(struct zebra_dplane_ctx));
+		zdplane_info.dg_free_ctx_count--;
+	}
+
+	DPLANE_UNLOCK();
+
+	if (p == NULL)
+		p = XCALLOC(MTYPE_DP_CTX, sizeof(struct zebra_dplane_ctx));
 
 	return p;
 }
@@ -304,12 +323,12 @@ static struct zebra_dplane_ctx *dplane_ctx_alloc(void)
 /*
  * Free a dataplane results context.
  */
-static void dplane_ctx_free(struct zebra_dplane_ctx **pctx)
+static void dplane_ctx_free(struct zebra_dplane_ctx *pctx)
 {
 	if (pctx == NULL)
 		return;
 
-	DPLANE_CTX_VALID(*pctx);
+	DPLANE_CTX_VALID(pctx);
 
 	/* TODO -- just freeing memory, but would like to maintain
 	 * a pool
@@ -318,24 +337,24 @@ static void dplane_ctx_free(struct zebra_dplane_ctx **pctx)
 	/* Some internal allocations may need to be freed, depending on
 	 * the type of info captured in the ctx.
 	 */
-	switch ((*pctx)->zd_op) {
+	switch (pctx->zd_op) {
 	case DPLANE_OP_ROUTE_INSTALL:
 	case DPLANE_OP_ROUTE_UPDATE:
 	case DPLANE_OP_ROUTE_DELETE:
 
 		/* Free allocated nexthops */
-		if ((*pctx)->u.rinfo.zd_ng.nexthop) {
+		if (pctx->u.rinfo.zd_ng.nexthop) {
 			/* This deals with recursive nexthops too */
-			nexthops_free((*pctx)->u.rinfo.zd_ng.nexthop);
+			nexthops_free(pctx->u.rinfo.zd_ng.nexthop);
 
-			(*pctx)->u.rinfo.zd_ng.nexthop = NULL;
+			pctx->u.rinfo.zd_ng.nexthop = NULL;
 		}
 
-		if ((*pctx)->u.rinfo.zd_old_ng.nexthop) {
+		if (pctx->u.rinfo.zd_old_ng.nexthop) {
 			/* This deals with recursive nexthops too */
-			nexthops_free((*pctx)->u.rinfo.zd_old_ng.nexthop);
+			nexthops_free(pctx->u.rinfo.zd_old_ng.nexthop);
 
-			(*pctx)->u.rinfo.zd_old_ng.nexthop = NULL;
+			pctx->u.rinfo.zd_old_ng.nexthop = NULL;
 		}
 
 		break;
@@ -347,7 +366,7 @@ static void dplane_ctx_free(struct zebra_dplane_ctx **pctx)
 		zebra_nhlfe_t *nhlfe, *next;
 
 		/* Free allocated NHLFEs */
-		for (nhlfe = (*pctx)->u.lsp.nhlfe_list; nhlfe; nhlfe = next) {
+		for (nhlfe = pctx->u.lsp.nhlfe_list; nhlfe; nhlfe = next) {
 			next = nhlfe->next;
 
 			zebra_mpls_nhlfe_del(nhlfe);
@@ -356,8 +375,8 @@ static void dplane_ctx_free(struct zebra_dplane_ctx **pctx)
 		/* Clear pointers in lsp struct, in case we're cacheing
 		 * free context structs.
 		 */
-		(*pctx)->u.lsp.nhlfe_list = NULL;
-		(*pctx)->u.lsp.best_nhlfe = NULL;
+		pctx->u.lsp.nhlfe_list = NULL;
+		pctx->u.lsp.best_nhlfe = NULL;
 
 		break;
 	}
@@ -366,8 +385,22 @@ static void dplane_ctx_free(struct zebra_dplane_ctx **pctx)
 		break;
 	}
 
-	XFREE(MTYPE_DP_CTX, *pctx);
-	*pctx = NULL;
+	DPLANE_LOCK();
+
+	if (zdplane_info.dg_free_ctx_count < DPLANE_FREE_CTX_LIMIT) {
+		TAILQ_INSERT_TAIL(&(zdplane_info.dg_free_ctx_q), pctx,
+				  zd_q_entries);
+
+		zdplane_info.dg_free_ctx_count++;
+
+		pctx = NULL;
+	}
+
+	DPLANE_UNLOCK();
+
+	if (pctx) {
+		XFREE(MTYPE_DP_CTX, pctx);
+	}
 }
 
 /*
@@ -376,7 +409,10 @@ static void dplane_ctx_free(struct zebra_dplane_ctx **pctx)
 void dplane_ctx_fini(struct zebra_dplane_ctx **pctx)
 {
 	/* TODO -- maintain pool; for now, just free */
-	dplane_ctx_free(pctx);
+	if (pctx) {
+		dplane_ctx_free(*pctx);
+		*pctx = NULL;
+	}
 }
 
 /* Enqueue a context block */
@@ -1045,7 +1081,7 @@ done:
 		atomic_fetch_add_explicit(&zdplane_info.dg_route_errors, 1,
 					  memory_order_relaxed);
 		if (ctx)
-			dplane_ctx_free(&ctx);
+			dplane_ctx_fini(&ctx);
 	}
 
 	return result;
@@ -1172,7 +1208,7 @@ done:
 		atomic_fetch_add_explicit(&zdplane_info.dg_lsp_errors, 1,
 					  memory_order_relaxed);
 		if (ctx)
-			dplane_ctx_free(&ctx);
+			dplane_ctx_fini(&ctx);
 	}
 
 	return result;
@@ -2069,6 +2105,7 @@ static void zebra_dplane_init_internal(struct zebra_t *zebra)
 
 	TAILQ_INIT(&zdplane_info.dg_route_ctx_q);
 	TAILQ_INIT(&zdplane_info.dg_providers_q);
+	TAILQ_INIT(&zdplane_info.dg_free_ctx_q);
 
 	zdplane_info.dg_updates_per_cycle = DPLANE_DEFAULT_NEW_WORK;
 
