@@ -725,10 +725,18 @@ int netlink_parse_info(int (*filter)(struct nlmsghdr *, ns_id_t, int),
 		status = recvmsg(nl->sock, &msg, 0);
 #endif /* HANDLE_NETLINK_FUZZING */
 		if (status < 0) {
-			if (errno == EINTR)
+			if (errno == EINTR) {
+				if (IS_ZEBRA_DEBUG_KERNEL)
+					zlog_debug("parse_info: EINTR!");
 				continue;
-			if (errno == EWOULDBLOCK || errno == EAGAIN)
+			}
+			if (errno == EWOULDBLOCK || errno == EAGAIN) {
+				if (IS_ZEBRA_DEBUG_KERNEL)
+					zlog_debug("parse_info: %s (%d): ret %d",
+						   safe_strerror(errno), errno,
+						   ret);
 				break;
+			}
 			flog_err(EC_ZEBRA_RECVMSG_OVERRUN,
 				 "%s recvmsg overrun: %s", nl->name,
 				 safe_strerror(errno));
