@@ -108,8 +108,9 @@ static int kernel_rtm_ipv4(int cmd, const struct prefix *p,
 	char prefix_buf[PREFIX_STRLEN];
 	enum blackhole_type bh_type = BLACKHOLE_UNSPEC;
 
-	if (IS_ZEBRA_DEBUG_RIB)
+	if (IS_ZEBRA_DEBUG_KERNEL)
 		prefix2str(p, prefix_buf, sizeof(prefix_buf));
+
 	memset(&sin_dest, 0, sizeof(struct sockaddr_in));
 	sin_dest.sin_family = AF_INET;
 #ifdef HAVE_STRUCT_SOCKADDR_IN_SIN_LEN
@@ -130,6 +131,7 @@ static int kernel_rtm_ipv4(int cmd, const struct prefix *p,
 		if (CHECK_FLAG(nexthop->flags, NEXTHOP_FLAG_RECURSIVE))
 			continue;
 
+		smplsp = NULL;
 		gate = 0;
 		char gate_buf[INET_ADDRSTRLEN] = "NULL";
 
@@ -169,11 +171,17 @@ static int kernel_rtm_ipv4(int cmd, const struct prefix *p,
 			}
 
 #ifdef __OpenBSD__
-			if (nexthop->nh_label
-			    && !kernel_rtm_add_labels(nexthop->nh_label,
-						      &smpls))
-				continue;
-			smplsp = (union sockunion *)&smpls;
+			if (nexthop->nh_label) {
+				if (kernel_rtm_add_labels(nexthop->nh_label,
+							  &smpls) != 0) {
+					if (IS_ZEBRA_DEBUG_KERNEL)
+						zlog_debug("%s: %s: error adding nexthop labels",
+							   __func__,
+							   prefix_buf);
+					continue;
+				}
+				smplsp = (union sockunion *)&smpls;
+			}
 #endif
 
 			error = rtm_write(cmd, (union sockunion *)&sin_dest,
@@ -314,6 +322,7 @@ static int kernel_rtm_ipv6(int cmd, const struct prefix *p,
 		if (CHECK_FLAG(nexthop->flags, NEXTHOP_FLAG_RECURSIVE))
 			continue;
 
+		smplsp = NULL;
 		gate = 0;
 
 		if ((cmd == RTM_ADD && NEXTHOP_IS_ACTIVE(nexthop->flags))
@@ -356,10 +365,12 @@ static int kernel_rtm_ipv6(int cmd, const struct prefix *p,
 		}
 
 #ifdef __OpenBSD__
-		if (nexthop->nh_label
-		    && !kernel_rtm_add_labels(nexthop->nh_label, &smpls))
-			continue;
-		smplsp = (union sockunion *)&smpls;
+		if (nexthop->nh_label) {
+			if (kernel_rtm_add_labels(nexthop->nh_label,
+						  &smpls) != 0)
+				continue;
+			smplsp = (union sockunion *)&smpls;
+		}
 #endif
 
 		error = rtm_write(cmd, (union sockunion *)&sin_dest,
