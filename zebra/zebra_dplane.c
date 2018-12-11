@@ -42,7 +42,7 @@ DEFINE_MTYPE(ZEBRA, DP_PROV, "Zebra DPlane Provider")
 /*#define DPLANE_TEST_PROVIDER 1 */
 
 /* Default value for max queued incoming updates */
-const uint32_t DPLANE_DEFAULT_MAX_QUEUED = 200;
+const uint32_t DPLANE_DEFAULT_MAX_QUEUED = 400;
 
 /* Default value for new work per cycle */
 const uint32_t DPLANE_DEFAULT_NEW_WORK = 100;
@@ -205,6 +205,7 @@ static struct zebra_dplane_globals {
 
 	/* Results callback registered by zebra 'core' */
 	dplane_results_fp dg_results_cb;
+	dplane_results_list_fp dg_results_list_cb;
 
 	/* Sentinel for beginning of shutdown */
 	volatile bool dg_is_shutdown;
@@ -1071,6 +1072,12 @@ dplane_route_update_internal(struct route_node *rn,
 	}
 
 done:
+
+#ifdef DPLANE_TESTING_CODE
+	// TODO
+	if ((zdplane_info.dg_routes_in % 1000) == 0)
+		zlog_debug("routes_in counter: %u", zdplane_info.dg_routes_in);
+#endif
 	/* Update counter */
 	atomic_fetch_add_explicit(&zdplane_info.dg_routes_in, 1,
 				  memory_order_relaxed);
@@ -1523,6 +1530,16 @@ int dplane_provider_work_ready(void)
 int dplane_results_register(dplane_results_fp fp)
 {
 	zdplane_info.dg_results_cb = fp;
+	zdplane_info.dg_results_list_cb = NULL;
+
+	return AOK;
+}
+
+int dplane_results_list_register(dplane_results_list_fp fp)
+{
+	zdplane_info.dg_results_list_cb = fp;
+	zdplane_info.dg_results_cb = NULL;
+
 	return AOK;
 }
 
@@ -1924,7 +1941,7 @@ static int dplane_thread_loop(struct thread *event)
 	DPLANE_UNLOCK();
 
 	atomic_fetch_sub_explicit(&zdplane_info.dg_routes_queued, counter,
-				  memory_order_relaxed);
+				  memory_order_seq_cst);
 
 	if (IS_ZEBRA_DEBUG_DPLANE_DETAIL)
 		zlog_debug("dplane: incoming new work counter: %d", counter);
@@ -2052,13 +2069,20 @@ static int dplane_thread_loop(struct thread *event)
 	}
 
 
-	for (ctx = TAILQ_FIRST(&work_list); ctx; ) {
-		TAILQ_REMOVE(&work_list, ctx, zd_q_entries);
+	if (zdplane_info.dg_results_list_cb) {
+		zdplane_info.dg_results_list_cb(&work_list);
 
-		/* Call through to zebra main */
-		(*zdplane_info.dg_results_cb)(ctx);
+		/* Ensure list is reset */
+		TAILQ_INIT(&work_list);
+	} else {
+		for (ctx = TAILQ_FIRST(&work_list); ctx; ) {
+			TAILQ_REMOVE(&work_list, ctx, zd_q_entries);
 
-		ctx = TAILQ_FIRST(&work_list);
+			/* Call through to zebra main */
+			(*zdplane_info.dg_results_cb)(ctx);
+
+			ctx = TAILQ_FIRST(&work_list);
+		}
 	}
 
 done:
@@ -2132,6 +2156,9 @@ void zebra_dplane_start(void)
 						  "Zebra dplane");
 
 	zdplane_info.dg_master = zdplane_info.dg_pthread->master;
+
+	/* TODO */
+	zlog_debug("dplane thread_master is %p", zdplane_info.dg_master);
 
 	zdplane_info.dg_run = true;
 

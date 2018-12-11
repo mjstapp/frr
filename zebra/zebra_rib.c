@@ -2133,6 +2133,13 @@ static void do_nht_processing(void)
 	struct vrf *vrf;
 	struct zebra_vrf *zvrf;
 
+	/* Only do NHT when all rib work is complete */
+	if (!work_queue_empty(zebrad.ribq))
+		return;
+
+	// TODO
+	zlog_debug("NHT processing check");
+
 	/* Evaluate nexthops for those VRFs which underwent route processing.
 	 * This
 	 * should limit the evaluation to the necessary VRFs in most common
@@ -2166,6 +2173,9 @@ static void do_nht_processing(void)
 		zebra_mpls_lsp_schedule(zvrf);
 		mpls_unmark_lsps_for_processing(zvrf);
 	}
+
+	// TODO
+	zlog_debug("NHT processing check: done");
 }
 
 /*
@@ -2186,15 +2196,21 @@ static wq_item_status meta_queue_process(struct work_queue *dummy, void *data)
 	struct meta_queue *mq = data;
 	unsigned i;
 	uint32_t queue_len, queue_limit;
+//	static int test = 0;
 
 	/* Ensure there's room for more dataplane updates */
 	queue_limit = dplane_get_in_queue_limit();
 	queue_len = dplane_get_in_queue_len();
 	if (queue_len > queue_limit) {
-		if (IS_ZEBRA_DEBUG_RIB_DETAILED)
-			zlog_debug("rib queue: dplane queue len %u, limit %u, retrying",
-				   queue_len, queue_limit);
+//		if (IS_ZEBRA_DEBUG_RIB_DETAILED)
 
+#ifdef DPLANE_TESTING_CODE
+		if (!test) {
+			zlog_debug("rib queue: dplane queue len %u, limit %u, mq size %u, retrying",
+				   queue_len, queue_limit, mq->size);
+			test = 1;
+		}
+#endif
 		/* Ensure that the meta-queue is actually enqueued */
 		if (work_queue_empty(zebrad.ribq))
 			work_queue_add(zebrad.ribq, zebrad.mq);
@@ -2202,6 +2218,13 @@ static wq_item_status meta_queue_process(struct work_queue *dummy, void *data)
 		return WQ_QUEUE_BLOCKED;
 	}
 
+#ifdef DPLANE_TESTING_CODE
+	if (test) {
+		zlog_debug("rib queue running: dplane queue len %u, limit %u, mq size %u",
+			   queue_len, queue_limit, mq->size);
+		test = 0;
+	}
+#endif
 	for (i = 0; i < MQ_SIZE; i++)
 		if (process_subq(mq->subq[i], i)) {
 			mq->size--;
@@ -3261,40 +3284,49 @@ void rib_close_table(struct route_table *table)
 static int rib_process_dplane_results(struct thread *thread)
 {
 	struct zebra_dplane_ctx *ctx;
+	struct dplane_ctx_q ctxlist;
 
-	/* TODO -- dequeue a list with one lock/unlock cycle? */
+	/* Dequeue a list of completed updates with one lock/unlock cycle */
 
 	do {
+		TAILQ_INIT(&ctxlist);
+
 		/* Take lock controlling queue of results */
 		pthread_mutex_lock(&dplane_mutex);
 		{
-			/* Dequeue context block */
-			ctx = dplane_ctx_dequeue(&rib_dplane_q);
+			dplane_ctx_list_append(&ctxlist, &rib_dplane_q);
 		}
 		pthread_mutex_unlock(&dplane_mutex);
 
+		/* Dequeue context block */
+		ctx = dplane_ctx_dequeue(&ctxlist);
+
+		/* If we've emptied the results queue, we're done */
 		if (ctx == NULL)
 			break;
 
-		switch (dplane_ctx_get_op(ctx)) {
+		while (ctx) {
+			switch (dplane_ctx_get_op(ctx)) {
 
-		case DPLANE_OP_ROUTE_INSTALL:
-		case DPLANE_OP_ROUTE_UPDATE:
-		case DPLANE_OP_ROUTE_DELETE:
-			rib_process_result(ctx);
-			break;
+			case DPLANE_OP_ROUTE_INSTALL:
+			case DPLANE_OP_ROUTE_UPDATE:
+			case DPLANE_OP_ROUTE_DELETE:
+				rib_process_result(ctx);
+				break;
 
-		case DPLANE_OP_LSP_INSTALL:
-		case DPLANE_OP_LSP_UPDATE:
-		case DPLANE_OP_LSP_DELETE:
-			zebra_mpls_lsp_dplane_result(ctx);
-			break;
+			case DPLANE_OP_LSP_INSTALL:
+			case DPLANE_OP_LSP_UPDATE:
+			case DPLANE_OP_LSP_DELETE:
+				zebra_mpls_lsp_dplane_result(ctx);
+				break;
 
-		default:
-			/* Don't expect this: just return the struct? */
-			dplane_ctx_fini(&ctx);
-			break;
-		} /* Dispatch by op code */
+			default:
+				/* Don't expect this: just return the struct? */
+				dplane_ctx_fini(&ctx);
+			}
+
+			ctx = dplane_ctx_dequeue(&ctxlist);
+		}
 
 	} while (1);
 
@@ -3309,17 +3341,17 @@ static int rib_process_dplane_results(struct thread *thread)
  * the dataplane pthread. We enqueue the results here for processing by
  * the main thread later.
  */
-static int rib_dplane_results(struct zebra_dplane_ctx *ctx)
+static int rib_dplane_results_list(struct dplane_ctx_q *ctxlist)
 {
 	/* Take lock controlling queue of results */
 	pthread_mutex_lock(&dplane_mutex);
 	{
-		/* Enqueue context block */
-		dplane_ctx_enqueue_tail(&rib_dplane_q, ctx);
+		/* Enqueue list of context blocks */
+		dplane_ctx_list_append(&rib_dplane_q, ctxlist);
 	}
 	pthread_mutex_unlock(&dplane_mutex);
 
-	/* Ensure event is signalled to zebra main thread */
+	/* Ensure event is signalled to zebra main pthread */
 	thread_add_event(zebrad.master, rib_process_dplane_results, NULL, 0,
 			 &t_dplane);
 
@@ -3331,11 +3363,13 @@ void rib_init(void)
 {
 	rib_queue_init(&zebrad);
 
+	zlog_debug("rib thread_master is %p", zebrad.master);
+
 	/* Init dataplane, and register for results */
 	pthread_mutex_init(&dplane_mutex, NULL);
 	TAILQ_INIT(&rib_dplane_q);
 	zebra_dplane_init();
-	dplane_results_register(rib_dplane_results);
+	dplane_results_list_register(rib_dplane_results_list);
 }
 
 /*

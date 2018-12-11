@@ -350,6 +350,10 @@ typedef int (*dplane_results_fp)(struct zebra_dplane_ctx *ctx);
 
 int dplane_results_register(dplane_results_fp fp);
 
+typedef int (*dplane_results_list_fp)(struct dplane_ctx_q *ctxlist);
+
+int dplane_results_list_register(dplane_results_list_fp fp);
+
 /*
  * Initialize the dataplane modules at zebra startup. This is currently called
  * by the rib module.
