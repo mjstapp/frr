@@ -107,10 +107,12 @@ def setup_module(mod):
         for cmd in cmds:
             output = tgen.net[rname].cmd(cmd.format(rname))
 
+        dirstr=router.logdir + '/{}/zebra.early.log'.format(router.name)
+
         router.load_config(
             TopoRouter.RD_ZEBRA,
             os.path.join(CWD, '{}/zebra.conf'.format(rname)),
-            '--vrfwnetns'
+            '--vrfwnetns --log file:' + dirstr + ' --log-level=debug'
         )
         router.load_config(
             TopoRouter.RD_OSPF,
