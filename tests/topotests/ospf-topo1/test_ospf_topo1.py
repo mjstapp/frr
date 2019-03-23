@@ -93,9 +93,12 @@ def setup_module(mod):
 
     router_list = tgen.routers()
     for rname, router in router_list.iteritems():
+
+        dirstr=router.logdir + '/{}/zebra.early.log'.format(router.name)
         router.load_config(
             TopoRouter.RD_ZEBRA,
-            os.path.join(CWD, '{}/zebra.conf'.format(rname))
+            os.path.join(CWD, '{}/zebra.conf'.format(rname)),
+            '--log file:' + dirstr + ' --log-level=debug'
         )
         router.load_config(
             TopoRouter.RD_OSPF,
