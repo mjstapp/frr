@@ -2601,6 +2601,8 @@ void rib_unlink(struct route_node *rn, struct route_entry *re)
 		dest->selected_fib = NULL;
 
 	nexthops_free(re->ng.nexthop);
+	nexthops_free(re->fib_ng.nexthop);
+
 	XFREE(MTYPE_RE, re);
 }
 
