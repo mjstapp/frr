@@ -108,6 +108,9 @@ DECLARE_QOBJ_TYPE(vrf)
 extern struct vrf_id_head vrfs_by_id;
 extern struct vrf_name_head vrfs_by_name;
 
+extern void vrf_mutex_lock(void);
+extern void vrf_mutex_unlock(void);
+
 extern struct vrf *vrf_lookup_by_id(vrf_id_t);
 extern struct vrf *vrf_lookup_by_name(const char *);
 extern struct vrf *vrf_get(vrf_id_t, const char *);

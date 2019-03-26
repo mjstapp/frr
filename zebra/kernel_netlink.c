@@ -989,8 +989,10 @@ int netlink_talk_info(int (*filter)(struct nlmsghdr *, ns_id_t, int startup),
 #endif
 	_zprivs_raise_common(&zserv_privs, __func__, &pname);
 	{
+		vrf_mutex_lock();
 		status = sendmsg(nl->sock, &msg, 0);
 		save_errno = errno;
+		vrf_mutex_unlock();
 	}
 	privs = &zserv_privs;
 	_zprivs_lower(&privs);

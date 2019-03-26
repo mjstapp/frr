@@ -60,6 +60,8 @@ static int vrf_backend_configured;
 static struct zebra_privs_t *vrf_daemon_privs;
 static char vrf_default_name[VRF_NAMSIZ] = VRF_DEFAULT_NAME_INTERNAL;
 
+static pthread_mutex_t vrf_mutex;
+
 /*
  * Turn on/off debug code
  * for vrf.
@@ -477,6 +479,8 @@ void vrf_init(int (*create)(struct vrf *), int (*enable)(struct vrf *),
 {
 	struct vrf *default_vrf;
 
+	pthread_mutex_init(&vrf_mutex, NULL);
+
 	/* initialise NS, in case VRF backend if NETNS */
 	ns_init();
 	if (debug_vrf)
@@ -542,6 +546,16 @@ void vrf_terminate(void)
 	}
 }
 
+void vrf_mutex_lock(void)
+{
+	pthread_mutex_lock(&vrf_mutex);
+}
+
+void vrf_mutex_unlock(void)
+{
+	pthread_mutex_unlock(&vrf_mutex);
+}
+
 static int vrf_default_accepts_vrf(int type)
 {
 	const char *fname = NULL;
@@ -577,6 +591,7 @@ int vrf_socket(int domain, int type, int protocol, vrf_id_t vrf_id,
 {
 	int ret, save_errno, ret2;
 
+	vrf_mutex_lock();
 	ret = vrf_switch_to_netns(vrf_id);
 	if (ret < 0)
 		flog_err_sys(EC_LIB_SOCKET, "%s: Can't switch to VRF %u (%s)",
@@ -586,12 +601,15 @@ int vrf_socket(int domain, int type, int protocol, vrf_id_t vrf_id,
 		zlog_err("VRF socket not used since net.ipv4.%s_l3mdev_accept != 0",
 			  (type == SOCK_STREAM ? "tcp" : "udp"));
 		errno = EEXIST; /* not sure if this is the best error... */
+		vrf_mutex_unlock();
 		return -2;
 	}
 
 	ret = socket(domain, type, protocol);
 	save_errno = errno;
 	ret2 = vrf_switchback_to_initial();
+	vrf_mutex_unlock();
+
 	if (ret2 < 0)
 		flog_err_sys(EC_LIB_SOCKET,
 			     "%s: Can't switchback from VRF %u (%s)", __func__,
@@ -985,15 +1003,19 @@ int vrf_ioctl(vrf_id_t vrf_id, int d, unsigned long request, char *params)
 {
 	int ret, saved_errno, rc;
 
+	vrf_mutex_lock();
 	ret = vrf_switch_to_netns(vrf_id);
 	if (ret < 0) {
 		flog_err_sys(EC_LIB_SOCKET, "%s: Can't switch to VRF %u (%s)",
 			     __func__, vrf_id, safe_strerror(errno));
+		vrf_mutex_unlock();
 		return 0;
 	}
 	rc = ioctl(d, request, params);
 	saved_errno = errno;
 	ret = vrf_switchback_to_initial();
+	vrf_mutex_unlock();
+
 	if (ret < 0)
 		flog_err_sys(EC_LIB_SOCKET,
 			     "%s: Can't switchback from VRF %u (%s)", __func__,
