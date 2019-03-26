@@ -126,6 +126,9 @@ extern void zprivs_get_ids(struct zprivs_ids_t *);
 extern struct zebra_privs_t *_zprivs_raise(struct zebra_privs_t *privs,
 					   const char *funcname);
 extern void _zprivs_lower(struct zebra_privs_t **privs);
+extern struct zebra_privs_t *_zprivs_raise_common(struct zebra_privs_t *privs,
+						  const char *funcname,
+						  const char **pfname);
 
 #define frr_elevate_privs(privs)                                               \
 	for (struct zebra_privs_t *_once = NULL,                               \

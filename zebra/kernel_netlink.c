@@ -953,6 +953,8 @@ int netlink_talk_info(int (*filter)(struct nlmsghdr *, ns_id_t, int startup),
 	struct msghdr msg;
 	int save_errno = 0;
 	const struct nlsock *nl;
+	const char *pname = NULL;
+	struct zebra_privs_t *privs;
 
 	memset(&snl, 0, sizeof snl);
 	memset(&iov, 0, sizeof iov);
@@ -979,9 +981,24 @@ int netlink_talk_info(int (*filter)(struct nlmsghdr *, ns_id_t, int startup),
 			n->nlmsg_flags);
 
 	/* Send message to netlink interface. */
+#if 0
 	frr_elevate_privs(&zserv_privs) {
 		status = sendmsg(nl->sock, &msg, 0);
 		save_errno = errno;
+	}
+#endif
+	_zprivs_raise_common(&zserv_privs, __func__, &pname);
+	{
+		status = sendmsg(nl->sock, &msg, 0);
+		save_errno = errno;
+	}
+	privs = &zserv_privs;
+	_zprivs_lower(&privs);
+
+	if (IS_ZEBRA_DEBUG_KERNEL) {
+		if (pname)
+			zlog_debug("%s: privs raised by '%s'",
+				   __func__, pname);
 	}
 
 	if (IS_ZEBRA_DEBUG_KERNEL_MSGDUMP_SEND) {

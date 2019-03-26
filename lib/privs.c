@@ -698,8 +698,9 @@ static int getgrouplist(const char *user, gid_t group, gid_t *groups,
 }
 #endif /* HAVE_GETGROUPLIST */
 
-struct zebra_privs_t *_zprivs_raise(struct zebra_privs_t *privs,
-				    const char *funcname)
+struct zebra_privs_t *_zprivs_raise_common(struct zebra_privs_t *privs,
+					   const char *funcname,
+					   const char **pfname)
 {
 	int save_errno = errno;
 
@@ -717,11 +718,18 @@ struct zebra_privs_t *_zprivs_raise(struct zebra_privs_t *privs,
 			}
 			errno = save_errno;
 			privs->raised_in_funcname = funcname;
-		}
+		} else if (pfname)
+			*pfname = privs->raised_in_funcname;
 	}
 	pthread_mutex_unlock(&(privs->mutex));
 
 	return privs;
+}
+
+struct zebra_privs_t *_zprivs_raise(struct zebra_privs_t *privs,
+				    const char *funcname)
+{
+	return _zprivs_raise_common(privs, funcname, NULL);
 }
 
 void _zprivs_lower(struct zebra_privs_t **privs)
