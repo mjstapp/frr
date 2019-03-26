@@ -82,8 +82,11 @@ int vrf_if_ioctl(unsigned long request, caddr_t buffer, vrf_id_t vrf_id)
 	int sock;
 	int ret;
 	int err = 0;
+	struct zebra_privs_t *privs;
 
-	frr_elevate_privs(&zserv_privs) {
+//	frr_elevate_privs(&zserv_privs) {
+	_zprivs_raise(&zserv_privs, __func__);
+	{
 		sock = vrf_socket(AF_INET, SOCK_DGRAM, 0, vrf_id, NULL);
 		if (sock < 0) {
 			zlog_err("Cannot create UDP socket: %s",
@@ -94,6 +97,9 @@ int vrf_if_ioctl(unsigned long request, caddr_t buffer, vrf_id_t vrf_id)
 		if (ret < 0)
 			err = errno;
 	}
+	privs = &zserv_privs;
+	_zprivs_lower(&privs);
+
 	close(sock);
 
 	if (ret < 0) {
