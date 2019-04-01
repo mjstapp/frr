@@ -24,6 +24,7 @@
 #define _ZEBRA_PRIVS_H
 
 #include <pthread.h>
+#include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -77,6 +78,7 @@ struct zebra_privs_t {
 	zebra_privs_current_t (*current_state)(
 		void); /* current privilege state */
 	const char *raised_in_funcname;
+	bool is_debug;
 };
 
 struct zprivs_ids_t {
@@ -136,6 +138,8 @@ extern struct zebra_privs_t *_zprivs_raise_common(struct zebra_privs_t *privs,
 					  (unused, cleanup(_zprivs_lower))) =  \
 					  _zprivs_raise(privs, __func__);      \
 	     _once == NULL; _once = (void *)1)
+
+extern void frr_privs_debug(struct zebra_privs_t *zprivs, bool enable);
 
 #ifdef __cplusplus
 }

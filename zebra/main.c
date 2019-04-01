@@ -389,10 +389,15 @@ int main(int argc, char **argv)
 	/* Initialize pthread library */
 	frr_pthread_init();
 
-	SET_FLAG(zebra_debug_event, ZEBRA_DEBUG_EVENT);
-	SET_FLAG(zebra_debug_kernel, ZEBRA_DEBUG_KERNEL);
-	SET_FLAG(zebra_debug_dplane, ZEBRA_DEBUG_DPLANE);
-	SET_FLAG(zebra_debug_rib, ZEBRA_DEBUG_RIB);
+	/* TODO */
+	if (zebra_di.early_logging) {
+		SET_FLAG(zebra_debug_event, ZEBRA_DEBUG_EVENT);
+		SET_FLAG(zebra_debug_kernel, ZEBRA_DEBUG_KERNEL);
+		SET_FLAG(zebra_debug_dplane, ZEBRA_DEBUG_DPLANE);
+		SET_FLAG(zebra_debug_rib, ZEBRA_DEBUG_RIB);
+
+		frr_privs_debug(&zserv_privs, true);
+	}
 
 	/* Zebra related initialize. */
 	zebra_router_init();

@@ -303,6 +303,7 @@ zebra_privs_current_t zprivs_state_caps(void)
 
 static void zprivs_caps_init(struct zebra_privs_t *zprivs)
 {
+	zprivs->is_debug = false;
 	zprivs_state.syscaps_p = zcaps2sys(zprivs->caps_p, zprivs->cap_num_p);
 	zprivs_state.syscaps_i = zcaps2sys(zprivs->caps_i, zprivs->cap_num_i);
 
@@ -703,6 +704,9 @@ struct zebra_privs_t *_zprivs_raise_common(struct zebra_privs_t *privs,
 					   const char **pfname)
 {
 	int save_errno = errno;
+	uint32_t refcount = 0;
+	bool changed_p = false;
+	const char *curr_name = NULL;
 
 	if (!privs)
 		return NULL;
@@ -717,11 +721,31 @@ struct zebra_privs_t *_zprivs_raise_common(struct zebra_privs_t *privs,
 					 funcname, safe_strerror(errno));
 			}
 			errno = save_errno;
+			changed_p = true;
 			privs->raised_in_funcname = funcname;
-		} else if (pfname)
-			*pfname = privs->raised_in_funcname;
+		} else {
+			errno = 0;
+			if (privs->change(ZPRIVS_RAISE)) {
+				zlog_err("%s: Failed to re-raise privileges (%s)",
+					 funcname, safe_strerror(errno));
+			}
+			errno = save_errno;
+
+			curr_name = privs->raised_in_funcname;
+		}
+
+		refcount = privs->refcount;
 	}
 	pthread_mutex_unlock(&(privs->mutex));
+
+	if (pfname)
+		*pfname = curr_name;
+
+	if (privs->is_debug)
+		zlog_debug("zprivs_raise: %s: refcount %u%s%s",
+			   funcname, refcount,
+			   !changed_p ? " already raised in " : "",
+			   !changed_p ? curr_name : "");
 
 	return privs;
 }
@@ -735,6 +759,8 @@ struct zebra_privs_t *_zprivs_raise(struct zebra_privs_t *privs,
 void _zprivs_lower(struct zebra_privs_t **privs)
 {
 	int save_errno = errno;
+	bool changed_p = false;
+	uint32_t refcount = 0;
 
 	if (!*privs)
 		return;
@@ -749,11 +775,17 @@ void _zprivs_lower(struct zebra_privs_t **privs)
 					 (*privs)->raised_in_funcname,
 					 safe_strerror(errno));
 			}
+			changed_p = true;
 			errno = save_errno;
 			(*privs)->raised_in_funcname = NULL;
 		}
+		refcount = (*privs)->refcount;
 	}
 	pthread_mutex_unlock(&(*privs)->mutex);
+
+	if ((*privs)->is_debug)
+		zlog_debug("zprivs_lower: refcount %u%s", refcount,
+			   changed_p ? ", lowered" : "");
 
 	*privs = NULL;
 }
@@ -967,4 +999,9 @@ void zprivs_get_ids(struct zprivs_ids_t *ids)
 			      : (ids->gid_vty = -1);
 
 	return;
+}
+
+void frr_privs_debug(struct zebra_privs_t *zprivs, bool enable)
+{
+	zprivs->is_debug = enable;
 }
