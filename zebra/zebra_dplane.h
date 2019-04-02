@@ -41,6 +41,7 @@ struct zebra_dplane_info {
 #if defined(HAVE_NETLINK)
 	struct nlsock nls;
 	bool is_cmd;
+	int last_error;
 #endif
 };
 
@@ -248,8 +249,8 @@ bool dplane_ctx_intf_has_label(const struct zebra_dplane_ctx *ctx);
 const char *dplane_ctx_get_intf_label(const struct zebra_dplane_ctx *ctx);
 
 /* Namespace info - esp. for netlink communication */
-const struct zebra_dplane_info *dplane_ctx_get_ns(
-	const struct zebra_dplane_ctx *ctx);
+struct zebra_dplane_info *dplane_ctx_get_ns(
+	struct zebra_dplane_ctx *ctx);
 
 /* Indicates zebra shutdown/exit is in progress. Some operations may be
  * simplified or skipped during shutdown processing.

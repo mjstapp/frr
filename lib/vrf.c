@@ -591,7 +591,6 @@ int vrf_socket(int domain, int type, int protocol, vrf_id_t vrf_id,
 {
 	int ret, save_errno, ret2;
 
-	vrf_mutex_lock();
 	ret = vrf_switch_to_netns(vrf_id);
 	if (ret < 0)
 		flog_err_sys(EC_LIB_SOCKET, "%s: Can't switch to VRF %u (%s)",
@@ -601,14 +600,12 @@ int vrf_socket(int domain, int type, int protocol, vrf_id_t vrf_id,
 		zlog_err("VRF socket not used since net.ipv4.%s_l3mdev_accept != 0",
 			  (type == SOCK_STREAM ? "tcp" : "udp"));
 		errno = EEXIST; /* not sure if this is the best error... */
-		vrf_mutex_unlock();
 		return -2;
 	}
 
 	ret = socket(domain, type, protocol);
 	save_errno = errno;
 	ret2 = vrf_switchback_to_initial();
-	vrf_mutex_unlock();
 
 	if (ret2 < 0)
 		flog_err_sys(EC_LIB_SOCKET,
@@ -1003,18 +1000,15 @@ int vrf_ioctl(vrf_id_t vrf_id, int d, unsigned long request, char *params)
 {
 	int ret, saved_errno, rc;
 
-	vrf_mutex_lock();
 	ret = vrf_switch_to_netns(vrf_id);
 	if (ret < 0) {
 		flog_err_sys(EC_LIB_SOCKET, "%s: Can't switch to VRF %u (%s)",
 			     __func__, vrf_id, safe_strerror(errno));
-		vrf_mutex_unlock();
 		return 0;
 	}
 	rc = ioctl(d, request, params);
 	saved_errno = errno;
 	ret = vrf_switchback_to_initial();
-	vrf_mutex_unlock();
 
 	if (ret < 0)
 		flog_err_sys(EC_LIB_SOCKET,

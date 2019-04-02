@@ -834,7 +834,7 @@ int kernel_interface_set_master(struct interface *master,
 }
 
 /* Interface address modification. */
-static int netlink_address_ctx(const struct zebra_dplane_ctx *ctx)
+static int netlink_address_ctx(struct zebra_dplane_ctx *ctx)
 {
 	int bytelen;
 	const struct prefix *p;

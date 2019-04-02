@@ -698,7 +698,7 @@ static void netlink_parse_extended_ack(struct nlmsghdr *h)
  */
 int netlink_parse_info(int (*filter)(struct nlmsghdr *, ns_id_t, int),
 		       const struct nlsock *nl,
-		       const struct zebra_dplane_info *zns,
+		       struct zebra_dplane_info *zns,
 		       int count, int startup)
 {
 	int status;
@@ -874,7 +874,7 @@ int netlink_parse_info(int (*filter)(struct nlmsghdr *, ns_id_t, int),
 							msg_type,
 							err->msg.nlmsg_seq,
 							err->msg.nlmsg_pid);
-				} else
+				} else {
 					flog_err(
 						EC_ZEBRA_UNEXPECTED_MESSAGE,
 						"%s error: %s, type=%s(%u), seq=%u, pid=%u",
@@ -883,6 +883,8 @@ int netlink_parse_info(int (*filter)(struct nlmsghdr *, ns_id_t, int),
 						nl_msg_type_to_str(msg_type),
 						msg_type, err->msg.nlmsg_seq,
 						err->msg.nlmsg_pid);
+					zns->last_error = -errnum;
+				}
 
 				return -1;
 			}
@@ -945,7 +947,7 @@ int netlink_parse_info(int (*filter)(struct nlmsghdr *, ns_id_t, int),
  */
 int netlink_talk_info(int (*filter)(struct nlmsghdr *, ns_id_t, int startup),
 		      struct nlmsghdr *n,
-		      const struct zebra_dplane_info *dp_info, int startup)
+		      struct zebra_dplane_info *dp_info, int startup)
 {
 	int status = 0;
 	struct sockaddr_nl snl;
@@ -989,10 +991,8 @@ int netlink_talk_info(int (*filter)(struct nlmsghdr *, ns_id_t, int startup),
 #endif
 	_zprivs_raise_common(&zserv_privs, __func__, &pname);
 	{
-		vrf_mutex_lock();
 		status = sendmsg(nl->sock, &msg, 0);
 		save_errno = errno;
-		vrf_mutex_unlock();
 	}
 	privs = &zserv_privs;
 	_zprivs_lower(&privs);

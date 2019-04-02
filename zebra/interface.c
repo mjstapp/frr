@@ -769,6 +769,10 @@ void if_handle_vrf_change(struct interface *ifp, vrf_id_t vrf_id)
 
 	old_vrf_id = ifp->vrf_id;
 
+	if (IS_ZEBRA_DEBUG_KERNEL)
+		zlog_debug("if_vrf_change: ifp '%s', old vrf %u, new vrf %u",
+			   ifp->name, old_vrf_id, vrf_id);
+
 	/* Uninstall connected routes. */
 	if_uninstall_connected(ifp);
 
@@ -916,6 +920,10 @@ void if_up(struct interface *ifp)
 	struct interface *link_if;
 	struct zebra_vrf *zvrf = vrf_info_lookup(ifp->vrf_id);
 
+	if (IS_ZEBRA_DEBUG_KERNEL)
+		zlog_debug("if_up: interface '%s', ifp %p",
+			   ifp->name, ifp);
+
 	zif = ifp->info;
 	zif->up_count++;
 	quagga_timestamp(2, zif->up_last, sizeof(zif->up_last));
@@ -972,6 +980,10 @@ void if_down(struct interface *ifp)
 	struct zebra_if *zif;
 	struct interface *link_if;
 	struct zebra_vrf *zvrf = vrf_info_lookup(ifp->vrf_id);
+
+	if (IS_ZEBRA_DEBUG_KERNEL)
+		zlog_debug("if_down: interface '%s', ifp %p",
+			   ifp->name, ifp);
 
 	zif = ifp->info;
 	zif->down_count++;

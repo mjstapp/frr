@@ -57,7 +57,7 @@ extern void netlink_read_init(const char *fname);
 #endif /* HANDLE_NETLINK_FUZZING */
 extern int netlink_parse_info(int (*filter)(struct nlmsghdr *, ns_id_t, int),
 			      const struct nlsock *nl,
-			      const struct zebra_dplane_info *dp_info,
+			      struct zebra_dplane_info *dp_info,
 			      int count, int startup);
 extern int netlink_talk_filter(struct nlmsghdr *h, ns_id_t ns, int startup);
 extern int netlink_talk(int (*filter)(struct nlmsghdr *, ns_id_t, int startup),
@@ -66,7 +66,7 @@ extern int netlink_talk(int (*filter)(struct nlmsghdr *, ns_id_t, int startup),
 /* Version with 'info' struct only */
 int netlink_talk_info(int (*filter)(struct nlmsghdr *, ns_id_t, int startup),
 		      struct nlmsghdr *n,
-		      const struct zebra_dplane_info *dp_info, int startup);
+		      struct zebra_dplane_info *dp_info, int startup);
 
 extern int netlink_request(struct nlsock *nl, struct nlmsghdr *n);
 
