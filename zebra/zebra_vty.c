@@ -372,7 +372,8 @@ static void vty_show_ip_route_detail(struct vty *vty, struct route_node *rn,
 }
 
 static void vty_show_ip_route(struct vty *vty, struct route_node *rn,
-			      struct route_entry *re, json_object *json)
+			      struct route_entry *re, json_object *json,
+			      bool is_fib)
 {
 	struct nexthop *nexthop;
 	int len = 0;
@@ -384,10 +385,19 @@ static void vty_show_ip_route(struct vty *vty, struct route_node *rn,
 	time_t uptime;
 	struct tm *tm;
 	rib_dest_t *dest = rib_dest_from_rnode(rn);
+	struct nexthop_group *nhg;
 
 	uptime = time(NULL);
 	uptime -= re->uptime;
 	tm = gmtime(&uptime);
+
+	/* If showing fib information, use the fib view of the
+	 * nexthops.
+	 */
+	if (is_fib)
+		nhg = rib_active_nhg(re);
+	else
+		nhg = &(re->ng);
 
 	if (json) {
 		json_route = json_object_new_object();
@@ -445,7 +455,7 @@ static void vty_show_ip_route(struct vty *vty, struct route_node *rn,
 
 		json_object_string_add(json_route, "uptime", buf);
 
-		for (ALL_NEXTHOPS(re->ng, nexthop)) {
+		for (ALL_NEXTHOPS_PTR(nhg, nexthop)) {
 			json_nexthop = json_object_new_object();
 
 			json_object_int_add(json_nexthop, "flags",
@@ -615,8 +625,8 @@ static void vty_show_ip_route(struct vty *vty, struct route_node *rn,
 	}
 
 	/* Nexthop information. */
-	for (ALL_NEXTHOPS(re->ng, nexthop)) {
-		if (nexthop == re->ng.nexthop) {
+	for (ALL_NEXTHOPS_PTR(nhg, nexthop)) {
+		if (nexthop == nhg->nexthop) {
 			/* Prefix information. */
 			len = vty_out(vty, "%c", zebra_route_char(re->type));
 			if (re->instance)
@@ -760,7 +770,7 @@ static void vty_show_ip_route_detail_json(struct vty *vty,
 	json_prefix = json_object_new_array();
 
 	RNODE_FOREACH_RE (rn, re) {
-		vty_show_ip_route(vty, rn, re, json_prefix);
+		vty_show_ip_route(vty, rn, re, json_prefix, false /*fib*/);
 	}
 
 	prefix2str(&rn->p, buf, sizeof(buf));
@@ -846,7 +856,7 @@ static void do_show_route_helper(struct vty *vty, struct zebra_vrf *zvrf,
 				}
 			}
 
-			vty_show_ip_route(vty, rn, re, json_prefix);
+			vty_show_ip_route(vty, rn, re, json_prefix, use_fib);
 		}
 
 		if (json_prefix) {
@@ -1496,7 +1506,7 @@ DEFUN (show_ipv6_mroute,
 				vty_out(vty, SHOW_ROUTE_V6_HEADER);
 				first = 0;
 			}
-			vty_show_ip_route(vty, rn, re, NULL);
+			vty_show_ip_route(vty, rn, re, NULL, false);
 		}
 	return CMD_SUCCESS;
 }
@@ -1528,7 +1538,7 @@ DEFUN (show_ipv6_mroute_vrf_all,
 					vty_out(vty, SHOW_ROUTE_V6_HEADER);
 					first = 0;
 				}
-				vty_show_ip_route(vty, rn, re, NULL);
+				vty_show_ip_route(vty, rn, re, NULL, false);
 			}
 	}
 	return CMD_SUCCESS;
