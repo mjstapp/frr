@@ -1660,6 +1660,59 @@ done:
 }
 
 /*
+ * Update from an async notification, to bring other fibs up-to-date.
+ */
+enum zebra_dplane_result
+dplane_route_notif_update(struct route_node *rn,
+			  struct route_entry *re,
+			  enum dplane_op_e op,
+			  struct zebra_dplane_ctx *ctx)
+{
+	enum zebra_dplane_result ret = ZEBRA_DPLANE_REQUEST_FAILURE;
+	struct zebra_dplane_ctx *new_ctx = NULL;
+	struct nexthop *nexthop;
+
+	if (rn == NULL || re == NULL)
+		goto done;
+
+	new_ctx = dplane_ctx_alloc();
+	if (new_ctx == NULL)
+		goto done;
+
+	/* Init context with info from zebra data structs */
+	dplane_ctx_route_init(new_ctx, op, rn, re);
+
+	/* For add/update, need to adjust the nexthops so that we match
+	 * the notification state, which may not be the route-entry/RIB
+	 * state.
+	 */
+	if (op == DPLANE_OP_ROUTE_UPDATE ||
+	    op == DPLANE_OP_ROUTE_INSTALL) {
+
+		nexthops_free(new_ctx->u.rinfo.zd_ng.nexthop);
+		new_ctx->u.rinfo.zd_ng.nexthop = NULL;
+
+		copy_nexthops(&(new_ctx->u.rinfo.zd_ng.nexthop),
+			      (rib_active_nhg(re))->nexthop, NULL);
+
+		for (ALL_NEXTHOPS(new_ctx->u.rinfo.zd_ng, nexthop))
+			UNSET_FLAG(nexthop->flags, NEXTHOP_FLAG_FIB);
+
+	}
+
+	/* Capture info about the source of the notification, in 'ctx' */
+	dplane_ctx_set_notif_provider(new_ctx,
+				      dplane_ctx_get_notif_provider(ctx));
+
+	dplane_route_enqueue(new_ctx);
+
+	ret = ZEBRA_DPLANE_REQUEST_QUEUED;
+
+done:
+	return ret;
+}
+
+/*
  * Enqueue LSP add for the dataplane.
  */
 enum zebra_dplane_result dplane_lsp_add(zebra_lsp_t *lsp)
