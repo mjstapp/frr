@@ -40,7 +40,7 @@ DEFINE_MTYPE(ZEBRA, DP_PROV, "Zebra DPlane Provider")
 #endif
 
 /* Enable test dataplane provider */
-/*#define DPLANE_TEST_PROVIDER 1 */
+#define DPLANE_TEST_PROVIDER 1
 
 /* Default value for max queued incoming updates */
 const uint32_t DPLANE_DEFAULT_MAX_QUEUED = 200;
@@ -2560,6 +2560,7 @@ static int test_dplane_shutdown_func(struct zebra_dplane_provider *prov,
 
 	return 0;
 }
+
 #endif	/* DPLANE_TEST_PROVIDER */
 
 /*
@@ -2594,6 +2595,238 @@ static void dplane_provider_init(void)
 			 ret);
 #endif	/* DPLANE_TEST_PROVIDER */
 }
+
+#ifdef DEV_BUILD
+/*
+ * Helper for testing; dev builds only!
+ * This is running in the main pthread context, after a vtysh cli command
+ */
+static void dplane_test_cmd_helper(struct vty *vty, int type,
+				   const struct prefix *ip,
+				   uint32_t fib_count)
+{
+	struct route_table *table;
+	struct route_node *rn = NULL;
+	struct zebra_dplane_ctx *ctx;
+	struct route_entry *re;
+	struct nexthop *nexthop, *temp;
+	uint32_t count;
+
+	/* Locate zebra's route */
+	table = zebra_vrf_table(AFI_IP, SAFI_UNICAST, 0);
+	if (table)
+		rn = route_node_lookup(table, ip);
+
+	if (rn == NULL) {
+		vty_out(vty, "%% No routes\n");
+		goto done;
+	}
+
+	RNODE_FOREACH_RE(rn, re) {
+		if (re)
+			break;
+	}
+
+	if (re == NULL) {
+		vty_out(vty, "%% No route-entries\n");
+		goto done;
+	}
+
+	/* Allocate a new context object */
+	ctx = dplane_ctx_alloc();
+	if (ctx == NULL)
+		goto done;
+
+	/* Use the route to populate a notification context struct */
+	dplane_ctx_set_op(ctx, DPLANE_OP_ROUTE_NOTIFY);
+	dplane_ctx_set_afi(ctx, AFI_IP);
+	dplane_ctx_set_safi(ctx, SAFI_UNICAST);
+	dplane_ctx_set_dest(ctx, (const struct prefix *)ip);
+	dplane_ctx_set_type(ctx, type);
+
+	dplane_ctx_set_notif_provider(ctx, 2);
+
+	/* Examine the rib nexthops */
+	count = 0;
+	for (nexthop = re->ng.nexthop; nexthop; nexthop = nexthop->next) {
+		temp = nexthop;
+
+		if (count >= fib_count)
+			break;
+
+		/* Descend any recursion chain */
+		while (temp && temp->resolved)
+			temp = temp->resolved;
+
+		/* Copy 'leaf' nexthop to context object */
+		copy_nexthops(&ctx->u.rinfo.zd_ng.nexthop, temp, NULL);
+
+		count++;
+	}
+
+	/* Ensure new nexthops have FIB and ACTIVE flags */
+	for (temp = ctx->u.rinfo.zd_ng.nexthop; temp; temp = temp->next) {
+		SET_FLAG(temp->flags, (NEXTHOP_FLAG_FIB |
+				       NEXTHOP_FLAG_ACTIVE));
+	}
+
+	/* Enqueue the notification object */
+	dplane_provider_enqueue_to_zebra(ctx);
+
+done:
+	if (rn)
+		route_unlock_node(rn);
+
+}
+
+static int dplane_test_lsp_helper(struct vty *vty, struct zebra_vrf *zvrf,
+				  mpls_label_t label, int fib_count)
+{
+	struct hash *lsp_table;
+	zebra_ile_t tmp_ile;
+	zebra_lsp_t *lsp;
+	zebra_nhlfe_t *nhlfe, *new_nhlfe;
+	struct nexthop *nexthop;
+	struct zebra_dplane_ctx *ctx;
+	int count;
+
+	lsp_table = zvrf->lsp_table;
+
+	tmp_ile.in_label = label;
+	lsp = hash_lookup(lsp_table, &tmp_ile);
+
+	if (lsp == NULL) {
+		vty_out(vty, "%% No LSP for label %d\n", label);
+		return CMD_WARNING;
+	}
+
+	/* Allocate a new context object */
+	ctx = dplane_ctx_alloc();
+	if (ctx == NULL)
+		return CMD_WARNING;
+
+	memset(&ctx->u.lsp, 0, sizeof(ctx->u.lsp));
+
+	ctx->u.lsp.ile = lsp->ile;
+	ctx->u.lsp.addr_family = lsp->addr_family;
+	ctx->u.lsp.num_ecmp = lsp->num_ecmp;
+	ctx->u.lsp.flags = lsp->flags;
+
+	dplane_ctx_set_op(ctx, DPLANE_OP_LSP_NOTIFY);
+	dplane_ctx_set_notif_provider(ctx, 2);
+
+	count = 0;
+	for (nhlfe = lsp->nhlfe_list; nhlfe; nhlfe = nhlfe->next) {
+		nexthop = nhlfe->nexthop;
+
+		if (nexthop == NULL)
+			continue;
+
+		new_nhlfe =
+			zebra_mpls_lsp_add_nhlfe(
+				&(ctx->u.lsp),
+				nhlfe->type,
+				nhlfe->nexthop->type,
+				&(nhlfe->nexthop->gate),
+				nhlfe->nexthop->ifindex,
+				nhlfe->nexthop->nh_label->label[0]);
+
+		if (nhlfe == lsp->best_nhlfe)
+			ctx->u.lsp.best_nhlfe = new_nhlfe;
+
+		/* Copy flags - modified by the cli params */
+
+		if (count < fib_count) {
+			new_nhlfe->flags =
+				(nhlfe->flags | NHLFE_FLAG_INSTALLED);
+
+			new_nhlfe->nexthop->flags =
+				(nhlfe->nexthop->flags | NEXTHOP_FLAG_FIB);
+		} else {
+			new_nhlfe->flags =
+				(nhlfe->flags & ~NHLFE_FLAG_INSTALLED);
+			new_nhlfe->nexthop->flags =
+				(nhlfe->nexthop->flags & ~NEXTHOP_FLAG_FIB);
+		}
+
+		count++;
+	}
+
+	/* Enqueue the notification object */
+	dplane_provider_enqueue_to_zebra(ctx);
+
+	return CMD_SUCCESS;
+}
+
+/*
+ * Dataplane test cli
+ */
+DEFUN (zebra_dplane_test,
+       zebra_dplane_test_cmd,
+       "zebra dplane test " FRR_IP_REDIST_STR_ZEBRA " A.B.C.D/M fib (0-100)",
+       ZEBRA_STR
+       "Zebra dataplane\n"
+       "Test commands\n"
+       FRR_IP_REDIST_HELP_STR_ZEBRA
+       "IP prefix <network>/<length>\n"
+       "fib notif\n"
+       "fib nexthops to leave\n")
+{
+	int type;
+	uint32_t count;
+	struct prefix p;
+
+	type = proto_redistnum(AFI_IP, argv[3]->arg);
+	if (type < 0) {
+		vty_out(vty, "%% Unknown route type\n");
+		return CMD_WARNING;
+	}
+
+	if (str2prefix(argv[4]->arg, &p) < 0) {
+		vty_out(vty, "%% Malformed prefix\n");
+		return CMD_WARNING;
+	}
+
+	count = strtoul(argv[6]->arg, NULL, 10);
+
+	dplane_test_cmd_helper(vty, type, &p, count);
+
+	return CMD_SUCCESS;
+}
+
+
+/*
+ * Dataplane test cli
+ */
+DEFUN (zebra_dplane_test_lsp,
+       zebra_dplane_test_lsp_cmd,
+       "zebra dplane test lsp (16-1048575) lfib (0-100)",
+       ZEBRA_STR
+       "Zebra dataplane\n"
+       "Test commands\n"
+       "Test LSPs\n"
+       "LSP label\n"
+       "Test LFIB\n"
+       "LFIB nexthops to leave\n")
+{
+	int count;
+	mpls_label_t label;
+	struct zebra_vrf *zvrf;
+
+	label = atoi(argv[4]->arg);
+
+	count = atoi(argv[6]->arg);
+
+	zvrf = vrf_info_lookup(VRF_DEFAULT);
+	if (zvrf == NULL) {
+		vty_out(vty, "%% No default VRF info\n");
+		return CMD_WARNING;
+	}
+
+	return dplane_test_lsp_helper(vty, zvrf, label, count);
+}
+
+#endif	/* DEV_BUILD */
 
 /* Indicates zebra shutdown/exit is in progress. Some operations may be
  * simplified or skipped during shutdown processing.
@@ -3013,4 +3246,8 @@ void zebra_dplane_init(int (*results_fp)(struct dplane_ctx_q *))
 {
 	zebra_dplane_init_internal();
 	zdplane_info.dg_results_cb = results_fp;
+#ifdef DEV_BUILD
+	install_element(ENABLE_NODE, &zebra_dplane_test_cmd);
+	install_element(ENABLE_NODE, &zebra_dplane_test_lsp_cmd);
+#endif
 }
