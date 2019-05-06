@@ -1745,6 +1745,50 @@ enum zebra_dplane_result dplane_lsp_delete(zebra_lsp_t *lsp)
 	return ret;
 }
 
+/* Update or un-install resulting from an async notification */
+enum zebra_dplane_result
+dplane_lsp_notif_update(zebra_lsp_t *lsp,
+			enum dplane_op_e op,
+			struct zebra_dplane_ctx *notif_ctx)
+{
+	enum zebra_dplane_result result = ZEBRA_DPLANE_REQUEST_FAILURE;
+	int ret = EINVAL;
+	struct zebra_dplane_ctx *ctx = NULL;
+
+	/* Obtain context block */
+	ctx = dplane_ctx_alloc();
+	if (ctx == NULL) {
+		ret = ENOMEM;
+		goto done;
+	}
+
+	ret = dplane_ctx_lsp_init(ctx, op, lsp);
+	if (ret != AOK)
+		goto done;
+
+	/* Capture info about the source of the notification */
+	dplane_ctx_set_notif_provider(
+		ctx,
+		dplane_ctx_get_notif_provider(notif_ctx));
+
+	ret = dplane_route_enqueue(ctx);
+
+done:
+	/* Update counter */
+	atomic_fetch_add_explicit(&zdplane_info.dg_lsps_in, 1,
+				  memory_order_relaxed);
+
+	if (ret == AOK)
+		result = ZEBRA_DPLANE_REQUEST_QUEUED;
+	else {
+		atomic_fetch_add_explicit(&zdplane_info.dg_lsp_errors, 1,
+					  memory_order_relaxed);
+		if (ctx)
+			dplane_ctx_free(&ctx);
+	}
+	return result;
+}
+
 /*
  * Enqueue pseudowire install for the dataplane.
  */

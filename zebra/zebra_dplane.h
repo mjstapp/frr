@@ -331,6 +331,11 @@ enum zebra_dplane_result dplane_lsp_add(zebra_lsp_t *lsp);
 enum zebra_dplane_result dplane_lsp_update(zebra_lsp_t *lsp);
 enum zebra_dplane_result dplane_lsp_delete(zebra_lsp_t *lsp);
 
+/* Update or un-install resulting from an async notification */
+enum zebra_dplane_result dplane_lsp_notif_update(zebra_lsp_t *lsp,
+						 enum dplane_op_e op,
+						 struct zebra_dplane_ctx *ctx);
+
 /*
  * Enqueue pseudowire operations for the dataplane.
  */
