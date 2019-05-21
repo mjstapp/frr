@@ -309,8 +309,6 @@ static void vty_show_ip_route_detail(struct vty *vty, struct route_node *rn,
 					break;
 				}
 				break;
-			default:
-				break;
 			}
 
 			if ((re->vrf_id != nexthop->vrf_id)
@@ -358,7 +356,8 @@ static void vty_show_ip_route_detail(struct vty *vty, struct route_node *rn,
 							addrstr);
 				}
 				break;
-			default:
+			case NEXTHOP_TYPE_IFINDEX:
+			case NEXTHOP_TYPE_BLACKHOLE:
 				break;
 			}
 
@@ -559,8 +558,6 @@ static void vty_show_ip_route(struct vty *vty, struct route_node *rn,
 					break;
 				}
 				break;
-			default:
-				break;
 			}
 
 			if ((nexthop->vrf_id != re->vrf_id)
@@ -611,7 +608,8 @@ static void vty_show_ip_route(struct vty *vty, struct route_node *rn,
 							buf);
 				}
 				break;
-			default:
+			case NEXTHOP_TYPE_IFINDEX:
+			case NEXTHOP_TYPE_BLACKHOLE:
 				break;
 			}
 
@@ -709,8 +707,6 @@ static void vty_show_ip_route(struct vty *vty, struct route_node *rn,
 				break;
 			}
 			break;
-		default:
-			break;
 		}
 
 		if ((nexthop->vrf_id != re->vrf_id)
@@ -749,7 +745,8 @@ static void vty_show_ip_route(struct vty *vty, struct route_node *rn,
 					vty_out(vty, ", src %s", buf);
 			}
 			break;
-		default:
+		case NEXTHOP_TYPE_IFINDEX:
+		case NEXTHOP_TYPE_BLACKHOLE:
 			break;
 		}
 
