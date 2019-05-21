@@ -96,6 +96,10 @@ zebra_zebra_SOURCES = \
 	zebra/zebra_errors.c \
 	# end
 
+nodist_zebra_zebra_SOURCES = \
+	yang/frr-zebra.yang.c \
+	#end
+
 zebra/debug_clippy.c: $(CLIPPY_DEPS)
 zebra/debug.$(OBJEXT): zebra/debug_clippy.c
 

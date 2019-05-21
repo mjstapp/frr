@@ -1,0 +1,128 @@
+module frr-zebra {
+  yang-version 1.1;
+  namespace "http://frrouting.org/yang/zebra";
+  prefix frr-zebra;
+
+  import ietf-yang-types {
+    prefix yang;
+  }
+
+  import ietf-inet-types {
+    prefix inet;
+  }
+
+  import frr-interface {
+    prefix frr-interface;
+  }
+
+  import frr-route-types {
+    prefix frr-route-types;
+  }
+
+  organization
+    "Free Range Routing";
+  contact
+    "FRR Users List: <mailto:frog@lists.frrouting.org>
+     FRR Development List: <mailto:dev@lists.frrouting.org>";
+  description
+    "This module defines a model for managing the FRR zebra daemon.";
+
+  revision 2019-06-01 {
+    description
+      "Initial revision.";
+  }
+
+  /*
+   * Multicast RPF mode configurable type
+   */
+  typedef mcast-rpf-lookup-mode {
+    type enumeration {
+      enum "none" {
+	value 0;
+	description
+	  "No mode set.";
+      }
+      enum "urib-only" {
+	value 1;
+	description
+	  "Lookup in unicast RIB only.";
+      }
+      enum "mrib-only" {
+	value 2;
+	description
+	  "Lookup in multicast RIB only.";
+      }
+      enum "mrib-then-urib" {
+	value 3;
+	description
+	  "Try multicast RIB first, fall back to unicast RIB.";
+      }
+      enum "lower-distance" {
+	value 4;
+	description
+	  "Lookup both unicast and mcast, use entry with lower distance.";
+      }
+      enum "longer-prefix" {
+	value 5;
+	description
+	  "Lookup both unicast and mcast, use entry with longer prefix.";
+      }
+    }
+    description
+      "Multicast RPF lookup behavior";
+  }
+
+  /*
+   * Main zebra container
+   */ 
+  container zebra {
+    description
+      "Configuration of the Zebra daemon.";
+
+    leaf mcast-rpf-lookup {
+      type frr-zebra:mcast-rpf-lookup-mode;
+      default "none";
+      description
+	"Multicast RPF lookup behavior.";
+    }
+
+    leaf ip-forwarding {
+      type boolean;
+      description
+	"IP forwarding status.";
+    }
+
+    leaf ipv6-forwarding {
+      type enumeration {
+	enum "unknown" {
+	  value -1;
+	  description
+	    "Unknown state.";
+	}
+	enum "off" {
+	  value 0;
+	  description
+	    "IPv6 forwarding disabled.";
+	}
+	enum "on" {
+	  value 1;
+	  description
+	    "IPv6 forwarding enabled.";
+	}
+      }
+      description
+	"IPv6 forwarding status.";
+    }
+
+    /*
+     * Operational data.
+     */
+    container state {
+      config false;
+      description
+	"Operational data.";
+    }
+
+  } // End of zebra container
+
+}
