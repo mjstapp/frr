@@ -55,6 +55,8 @@
 #include "zebra/zebra_pbr.h"
 #include "zebra/zebra_vxlan.h"
 
+extern const struct frr_yang_module_info frr_zebra_info;
+
 #if defined(HANDLE_NETLINK_FUZZING)
 #include "zebra/kernel_netlink.h"
 #endif /* HANDLE_NETLINK_FUZZING */
@@ -227,6 +229,7 @@ struct quagga_signal_t zebra_signals[] = {
 
 static const struct frr_yang_module_info *zebra_yang_modules[] = {
 	&frr_interface_info,
+	&frr_zebra_info,
 };
 
 FRR_DAEMON_INFO(

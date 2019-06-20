@@ -11,12 +11,12 @@ module frr-zebra {
     prefix inet;
   }
 
-  import frr-interface {
-    prefix frr-interface;
-  }
-
   import frr-route-types {
     prefix frr-route-types;
+  }
+
+  import ietf-routing-types {
+    prefix rt-types;
   }
 
   organization
@@ -42,12 +42,12 @@ module frr-zebra {
 	description
 	  "No mode set.";
       }
-      enum "urib-only" {
+      enum "mrib-only" {
 	value 1;
 	description
 	  "Lookup in unicast RIB only.";
       }
-      enum "mrib-only" {
+      enum "urib-only" {
 	value 2;
 	description
 	  "Lookup in multicast RIB only.";
@@ -72,6 +72,308 @@ module frr-zebra {
       "Multicast RPF lookup behavior";
   }
 
+  typedef nexthop-type {
+    type enumeration {
+      enum "ifindex" {
+	value 1;
+	description
+	  "Specific interface.";
+      }
+      enum "ip4" {
+	value 2;
+	description
+	  "IPv4 address.";
+      }
+      enum "ip4-ifindex" {
+	value 3;
+	description
+	  "IPv4 address and interface.";
+      }
+      enum "ip6" {
+	value 4;
+	description
+	  "IPv6 address.";
+      }
+      enum "ip6-ifindex" {
+	value 5;
+	description
+	  "IPv6 address and interface.";
+      }
+      enum "blackhole" {
+	value 6;
+	description
+	  "Unreachable or prohibited.";
+      }
+    }
+    description
+      "Nexthop types.";
+  }
+
+  typedef blackhole-type {
+    type enumeration {
+      enum "unspec" {
+	value 0;
+	description
+	  "Generic unreachable.";
+      }
+      enum "null" {
+	value 1;
+	description
+	  "Null type.";
+      }
+      enum "reject" {
+	value 2;
+	description
+	  "ICMP unreachable.";
+      }
+      enum "prohibited" {
+	value 3;
+	description
+	  "ICMP admin-prohibited.";
+      }
+    }
+    default "null";
+    description
+      "Nexthop blackhole types.";
+  }
+
+  typedef gateway-address {
+    type union {
+      type inet:ipv4-address;
+      type inet:ipv6-address;
+    }
+  }
+
+  /*
+   * Nexthop object
+   */
+  grouping frr-nexthop {
+    leaf nh-type {
+      type frr-zebra:nexthop-type;
+      mandatory true;
+      description
+	"The nexthop type.";
+    }
+
+    leaf gateway {
+      type frr-zebra:gateway-address;
+      description
+	"The nexthop gateway address.";
+    }
+
+    leaf vrf {
+      type string;
+      description
+	"The nexthop vrf name, if different from the route.";
+    }
+
+    leaf interface {
+      type string;
+      description
+	"The nexthop egress interface.";
+    }
+
+    leaf bh-type {
+      type frr-zebra:blackhole-type;
+      description
+	"A blackhole sub-type, if the nexthop is a blackhole type.";
+    }
+
+    leaf flags {
+      type uint32;
+      description
+	"The nexthop's raw flags value.";
+    }
+    leaf is-duplicate {
+      type boolean;
+      default false;
+      description
+	"Duplicate nexthop, ignored.";
+    }
+    leaf is-recursive {
+      type boolean;
+      default false;
+      description
+	"Nexthop must be resolved through another gateway.";
+    }
+    leaf is-onlink {
+      type boolean;
+      default false;
+      description
+	"Nexthop is directly connected.";
+    }
+    leaf is-active {
+      type boolean;
+      default false;
+      description
+	"Nexthop is active.";
+    }
+
+    uses rt-types:mpls-label-stack {
+      description
+	"Nexthop's MPLS label stack.";
+    }
+
+    leaf mtu {
+      type uint32;
+      description
+	"The nexthop's specific MTU.";
+    }
+
+  } // End of nexthop
+
+  /*
+   * Nexthop-group container
+   */
+  grouping frr-nexthop-group {
+    description
+      "A nexthop-group, represented as a list of nexthop objects.";
+
+    leaf name {
+      type string;
+      description
+        "The nexthop-group name.";
+    }
+
+    list entry {
+      key "id";
+      description
+        "A list of nexthop objects.";
+      leaf id {
+        type uint32;
+        description
+          "Identifies a nexthop within a nexthop group; the entries
+           are ordered by id value, and the value has no other meaning.";
+      }
+
+      uses frr-zebra:frr-nexthop;
+
+    }
+  } // End of frr-nexthop-group
+
+  /*
+   * Common route data, shared by v4 and v6 routes.
+   */
+  grouping route-common {
+    description
+      "Common information about a route.";
+
+    leaf vrf {
+      type string;
+      description
+	"The route's vrf name.";
+    }
+
+    leaf distance {
+      type uint32;
+      description
+        "Admin distance based on routing protocol.";
+    }
+    leaf metric {
+      type uint32;
+      description
+        "Route metric value.";
+    }
+    leaf tag {
+      type uint32;
+      description
+        "Route tag value.";
+    }
+
+    leaf is_selected {
+      type boolean;
+      description
+        "Route is the selected or preferred route for the prefix.";
+    }
+    leaf is_installed {
+      type boolean;
+      description
+        "Route is installed in the FIB.";
+    }
+    leaf is_failed {
+      type boolean;
+      description
+        "Route installation in FIB has failed.";
+    }
+    leaf is_queued {
+      type boolean;
+      description
+        "Route has a pending FIB operation that has not completed.";
+    }
+
+    leaf internal_flags {
+      type int32;
+      description
+        "Internal flags for the route.";
+    }
+    leaf internal_status {
+      type int32;
+      description
+        "Internal status for the route.";
+    }
+
+    leaf uptime {
+      type uint32;
+      units "seconds";
+      description
+        "Uptime for the route.";
+    }
+
+    container nexthop-group {
+      description
+        "Nexthop information for the route.";
+
+      uses frr-nexthop-group;
+    }
+
+  } // End of route-common
+
+  /*
+   * IPv4 Route object.
+   */
+  grouping ip4-route {
+    description
+      "An IPv4 route.";
+
+    leaf prefix {
+      type inet:ipv4-prefix;
+      description
+        "IP address (in the form A.B.C.D) and prefix length,
+         separated by the slash (/) character. The range of
+         values for the prefix-length is 0 to 32.";
+    }
+    leaf "protocol" {
+      type frr-route-types:frr-route-types-v4;
+      description
+        "The protocol owning the route.";
+    }
+
+    uses route-common;
+
+  } // End of ip4-route
+
+  /*
+   * IPv6 Route object.
+   */
+  grouping ip6-route {
+    description
+      "An IPv6 route.";
+
+    leaf prefix {
+      type inet:ipv6-prefix;
+      description
+        "The route's IPv6 prefix.";
+    }
+    leaf "protocol" {
+      type frr-route-types:frr-route-types-v6;
+      description
+        "The protocol owning the route.";
+    }
+
+    uses route-common;
+
+  } // End of ip6-route
+
   /*
    * Main zebra container
    */ 
@@ -81,7 +383,7 @@ module frr-zebra {
 
     leaf mcast-rpf-lookup {
       type frr-zebra:mcast-rpf-lookup-mode;
-      default "none";
+      default "mrib-then-urib";
       description
 	"Multicast RPF lookup behavior.";
     }
@@ -115,13 +417,36 @@ module frr-zebra {
     }
 
     /*
+     * End of configuration attributes
+     */
+
+    /*
      * Operational data.
      */
     container state {
       config false;
       description
 	"Operational data.";
-    }
+
+      container routes-v4 {
+        description
+          "IPv4 route information.";
+        list route {
+          key "prefix";
+          uses ip4-route;
+        }
+      }
+
+      container routes-v6 {
+        description
+          "IPv6 route information.";
+        list route {
+          key "prefix";
+          uses ip6-route;
+        }
+      }
+          
+    } // End of operational / state container
 
   } // End of zebra container
 

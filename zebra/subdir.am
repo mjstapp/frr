@@ -76,6 +76,7 @@ zebra_zebra_SOURCES = \
 	zebra/zebra_mpls_vty.c \
 	zebra/zebra_mroute.c \
 	zebra/zebra_nhg.c \
+	zebra/zebra_northbound.c \
 	zebra/zebra_ns.c \
 	zebra/zebra_pbr.c \
 	zebra/zebra_ptm.c \
