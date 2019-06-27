@@ -184,27 +184,24 @@ module frr-zebra {
       description
 	"The nexthop's raw flags value.";
     }
+
     leaf is-duplicate {
-      type boolean;
-      default false;
+      type empty;
       description
-	"Duplicate nexthop, ignored.";
+	"Duplicate nexthop; will be ignored.";
     }
     leaf is-recursive {
-      type boolean;
-      default false;
+      type empty;
       description
 	"Nexthop must be resolved through another gateway.";
     }
     leaf is-onlink {
-      type boolean;
-      default false;
+      type empty;
       description
 	"Nexthop is directly connected.";
     }
     leaf is-active {
-      type boolean;
-      default false;
+      type empty;
       description
 	"Nexthop is active.";
     }
@@ -275,38 +272,40 @@ module frr-zebra {
         "Route metric value.";
     }
     leaf tag {
-      type uint32;
+      type uint32 {
+        range "1..4294967295";
+      }
       description
         "Route tag value.";
     }
 
-    leaf is_selected {
-      type boolean;
+    leaf is-selected {
+      type empty;
       description
         "Route is the selected or preferred route for the prefix.";
     }
-    leaf is_installed {
-      type boolean;
+    leaf is-installed {
+      type empty;
       description
         "Route is installed in the FIB.";
     }
-    leaf is_failed {
-      type boolean;
+    leaf is-failed {
+      type empty;
       description
         "Route installation in FIB has failed.";
     }
-    leaf is_queued {
-      type boolean;
+    leaf is-queued {
+      type empty;
       description
         "Route has a pending FIB operation that has not completed.";
     }
 
-    leaf internal_flags {
+    leaf internal-flags {
       type int32;
       description
         "Internal flags for the route.";
     }
-    leaf internal_status {
+    leaf internal-status {
       type int32;
       description
         "Internal status for the route.";
@@ -379,7 +378,7 @@ module frr-zebra {
    */ 
   container zebra {
     description
-      "Configuration of the Zebra daemon.";
+      "Data model for the Zebra daemon.";
 
     leaf mcast-rpf-lookup {
       type frr-zebra:mcast-rpf-lookup-mode;
@@ -416,6 +415,54 @@ module frr-zebra {
 	"IPv6 forwarding status.";
     }
 
+    leaf workqueue-hold-timer {
+      type uint32 {
+        range "0..10000";
+      }
+      units "milliseconds";
+      default "10";
+      description
+        "Work-queue processing hold timer, in milliseconds.";
+    }
+
+    leaf zapi-packets {
+      type uint32 {
+        range "1..10000";
+      }
+      default "1000";
+      description
+        "Number of ZAPI packets to process before relinquishing
+        the main thread.";
+    }
+
+    container import-kernel-table {
+      description
+        "Parameters to use when importing IPv4 routes from a non-main kernel
+        routing table.";
+
+      leaf table-id {
+        type uint32 {
+          range "1..252";
+        }
+        mandatory true;
+        description
+          "The kernel table id.";
+      }
+      leaf distance {
+        type uint32 {
+          range "1..255";
+        }
+        default "15";
+        description
+          "The admin distance to use for imported routes.";
+      }
+      leaf route-map {
+        type string;
+        description
+          "A route-map to filter imported routes.";
+      }
+    }
+
     /*
      * End of configuration attributes
      */
@@ -427,27 +474,98 @@ module frr-zebra {
       config false;
       description
 	"Operational data.";
-
-      container routes-v4 {
-        description
-          "IPv4 route information.";
-        list route {
-          key "prefix";
-          uses ip4-route;
-        }
-      }
-
-      container routes-v6 {
-        description
-          "IPv6 route information.";
-        list route {
-          key "prefix";
-          uses ip6-route;
-        }
-      }
           
     } // End of operational / state container
 
   } // End of zebra container
+  
+  /*
+   * RPCs
+   */
+  rpc get-route-information {
+
+    input {
+
+      choice vrf-choice {
+        case single {
+          leaf vrf {
+            type string;
+            description
+              "Retrieve routes in a non-default vrf.";
+          }
+        }
+        case all {
+          leaf all-vrfs {
+            type empty;
+            description
+              "Retrieve routes from all vrfs.";
+          }
+        }
+      }
+
+      // Prefix
+      choice prefix-type {
+        case v4 {
+          leaf prefix-v4 {
+            type inet:ipv4-prefix;
+            description
+              "Retrieve routes matching a specific prefix.";
+          }
+          leaf supernets-only {
+            type empty;
+            description
+              "Skip routes that are subnets of classful prefix sizes.";
+          }
+        }
+        case v6 {
+          leaf prefix-v6 {
+            type inet:ipv6-prefix;
+            description
+              "Retrieve routes matching a specific prefix.";
+          }
+        }
+      }
+
+      leaf protocol {
+        type frr-route-types:frr-route-types-v4;
+        description
+          "Retrieve routes from a specific protocol daemon.";
+      }
+      leaf ospf-instance {
+        type uint32 {
+          range "1..65535";
+        }
+        description
+          "Retrieve routes from a specific OSPF instance.";
+      }
+      leaf include-detail {
+        type empty;
+      }
+    }
+
+    output {
+      choice route-list {
+        case v4 {
+          container routes-v4 {
+            description
+              "IPv4 route information.";
+            list route {
+              uses ip4-route;
+            }
+          }
+        }
+        case v6 {
+          container routes-v6 {
+            description
+              "IPv6 route information.";
+            list route {
+              uses ip6-route;
+            }
+          }
+        }
+      }
+
+    }
+  } // End get-route-information
 
 }
