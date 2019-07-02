@@ -32,6 +32,13 @@ module frr-zebra {
       "Initial revision.";
   }
 
+  typedef unix-timestamp {
+    type uint32;
+    units "seconds";
+    description
+      "An absolute time in seconds since the unix epoch.";
+  }
+
   /*
    * Multicast RPF mode configurable type
    */
@@ -374,6 +381,160 @@ module frr-zebra {
   } // End of ip6-route
 
   /*
+   * VxLAN Network Identifier type
+   */
+  typedef vni-id-type {
+    type uint32 {
+      range "0..16777215";
+    }
+    description
+      "A VxLAN network identifier value.";
+  }
+
+  typedef vni-vtep-flood-type {
+    type enumeration {
+      enum "head-end-repl" {
+        value 0;
+        description
+          "Head-end replication.";
+      }
+      enum "disabled" {
+        value 1;
+        description
+          "Flooding disabled.";
+      }
+      enum pim-sm {
+        value 2;
+        description
+          "Multicast PIM-SM.";
+      }
+    }
+  }
+
+  /*
+   * Information about EVPN VNIs
+   */
+  grouping vni-information {
+      choice type-choice {
+        case l2 {
+          leaf is-layer2 {
+            type empty;
+            description
+              "Information about an L2 VNI.";
+          }
+          leaf vtep-count {
+            type uint32;
+            description
+              "Number of VTEPs.";
+          }
+        }
+        case l3 {
+          leaf is-layer3 {
+            type empty;
+            description
+              "Information about an L3 VNI.";
+          }
+        }
+      }
+      leaf vni-id {
+        type vni-id-type;
+        description
+          "The VNI identifier.";
+      }
+      leaf vxlan-ifname {
+        type string;
+        description
+          "The VxLAN interface name.";
+      }
+      leaf mac-count {
+        type uint32;
+        description
+          "Number of valid MACs.";
+      }
+      leaf neighbor-count {
+        type uint32;
+        description
+          "Number of neighbors.";
+      }
+      leaf vrf {
+        type string;
+        description
+          "The tenant VRF.";
+      }
+      leaf local-vtep-addr {
+        type inet:ipv4-address;
+        description
+          "The local VTEP IP address.";
+      }
+  }
+
+  /*
+   * Detailed EVPN VNI information for L2.
+   */
+  grouping vni-l2-detail {
+    leaf if-index {
+      type uint32;
+      description
+        "The VxLAN ifindex.";
+    }
+    leaf advertise-gw {
+      type empty;
+      description
+        "The gateway MAC-IP is being advertised.";
+    }
+    leaf mcase-group {
+      type rt-types:ipv4-multicast-group-address;
+      description
+        "The VNI multicast group for BUM traffic.";
+    }
+    list remote-vtep-list {
+      leaf remote-vtep {
+        type inet:ipv4-address;
+        description
+          "The remote VTEP IP address.";
+      }
+      leaf vtep-flood {
+        type vni-vtep-flood-type;
+      }
+    }
+  }
+
+  /*
+   * Detailed EVPN VNI information for L3.
+   */
+  grouping vni-l3-detail {
+    leaf svi-interface {
+      type string;
+      description
+        "The SVI interface.";
+    }
+    leaf is-up {
+      type empty;
+      description
+        "The state is active.";
+    }
+    leaf prefix-only {
+      type empty;
+      description
+        "Prefix routes only";
+    }
+    leaf router-mac {
+      type yang:mac-address;
+      description
+        "The VNI Router MAC address.";
+    }
+    list vni-list {
+      description
+        "A list of the associated L2 VNIs.";
+      leaf vni-id {
+        type vni-id-type;
+        description
+          "An L2 VNI identifier.";
+      }
+    }
+  }
+
+  /*
    * Main zebra container
    */ 
   container zebra {
@@ -444,7 +605,6 @@ module frr-zebra {
         type uint32 {
           range "1..252";
         }
-        mandatory true;
         description
           "The kernel table id.";
       }
@@ -460,6 +620,43 @@ module frr-zebra {
         type string;
         description
           "A route-map to filter imported routes.";
+      }
+    }
+
+    leaf allow-external-route-update {
+      type empty;
+      description
+        "Allow FRR-controlled routes to be overwritten by external processes";
+    }
+
+    container vrf-vni-mapping {
+      description
+        "EVPN VNI mapping corresponding to a VRF.";
+      choice vrf-choice {
+        case default-vrf {
+          leaf def-vrf {
+            type empty;
+            description
+              "Mapping for the default VRF.";
+          }
+        }
+        case vrf-id {
+          leaf vrf-id {
+            type uint32;
+            description
+              "The identifier for a non-default VRF.";
+          }
+        }
+      }
+      leaf vni-id {
+        type vni-id-type;
+        description
+          "The VNI id to map to the default VRF.";
+      }
+      leaf prefix-only {
+        type empty;
+        description
+          "Prefix routes only.";
       }
     }
 
@@ -483,8 +680,44 @@ module frr-zebra {
    * RPCs
    */
   rpc get-route-information {
+    description
+      "Retrieve IPv4 or IPv6 unicast routes.";
 
     input {
+
+      choice ip-type {
+        case v4 {
+          leaf ipv4 {
+            type empty;
+            mandatory true;
+            description
+              "Retrieve IPv4 routes.";
+          }
+          leaf prefix-v4 {
+            type inet:ipv4-prefix;
+            description
+              "Retrieve routes matching a specific prefix.";
+          }
+          leaf supernets-only {
+            type empty;
+            description
+              "Skip routes that are subnets of classful prefix sizes.";
+          }
+        }
+        case v6 {
+          leaf ipv6 {
+            type empty;
+            mandatory true;
+            description
+              "Retrieve IPv6 routes.";
+          }
+          leaf prefix-v6 {
+            type inet:ipv6-prefix;
+            description
+              "Retrieve routes matching a specific prefix.";
+          }
+        }
+      }
 
       choice vrf-choice {
         case single {
@@ -503,27 +736,18 @@ module frr-zebra {
         }
       }
 
-      // Prefix
-      choice prefix-type {
-        case v4 {
-          leaf prefix-v4 {
-            type inet:ipv4-prefix;
-            description
-              "Retrieve routes matching a specific prefix.";
-          }
-          leaf supernets-only {
-            type empty;
-            description
-              "Skip routes that are subnets of classful prefix sizes.";
-          }
+      leaf fib-routes {
+        type empty;
+        description
+          "Retrieve FIB routes rather than RIB routes.";
+      }
+
+      leaf table-id {
+        type uint32 {
+          range "1..4294967295";
         }
-        case v6 {
-          leaf prefix-v6 {
-            type inet:ipv6-prefix;
-            description
-              "Retrieve routes matching a specific prefix.";
-          }
-        }
+        description
+          "Routing table id to retrieve.";
       }
 
       leaf protocol {
@@ -535,13 +759,28 @@ module frr-zebra {
         type uint32 {
           range "1..65535";
         }
+        must '../protocol = "ospf"';
         description
           "Retrieve routes from a specific OSPF instance.";
       }
-      leaf include-detail {
-        type empty;
+
+      choice detail {
+        case det {
+          leaf include-detail {
+            type empty;
+            description
+              "Include detailed information.";
+          }
+        }
+        case summ {
+          leaf summary {
+            type empty;
+            description
+              "Include summary information only.";
+          }
+        }
       }
-    }
+    } // End of input
 
     output {
       choice route-list {
@@ -564,8 +803,410 @@ module frr-zebra {
           }
         }
       }
+    } // End of output
 
-    }
   } // End get-route-information
+
+  rpc get-v6-mroute-info {
+    description
+      "Retrieve IPv6 multicast routes.";
+
+    input {
+      choice vrf-choice {
+        case single {
+          leaf vrf {
+            type string;
+            description
+              "Retrieve routes in a non-default vrf.";
+          }
+        }
+        case all {
+          leaf all-vrfs {
+            type empty;
+            description
+              "Retrieve routes from all vrfs.";
+          }
+        }
+      }
+    }
+
+    output {
+      container routes {
+        description
+          "IPv6 mcast route information.";
+        list route {
+          uses ip6-route;
+        }
+      }
+    }
+
+  }// End get-v6-mroute-info
+
+
+  rpc get-vrf-info {
+    description
+      "Retrieve VRF information; the default VRF is elided.";
+
+    // Note: no input clause.
+
+    output {
+      list vrf-list {
+        leaf name {
+          type string;
+          description
+            "The VRF name";
+        }
+        leaf is-user-config {
+          type empty;
+          description
+            "The VRF was configured by an admin.";
+        }
+        leaf vrf-id {
+          type uint32;
+          description
+            "The VRF id.";
+        }
+        choice vrf-type {
+          case inactive {
+            leaf is-inactive {
+              type empty;
+              description
+                "The VRF is inactive.";
+            }
+          }
+          case netns {
+            leaf netns-name {
+              type string;
+              description
+                "The net namespace name associated with the VRF.";
+            }
+          }
+          case table {
+            leaf table-id {
+              type uint32;
+              description
+                "The table-id associated with the VRF.";
+            }
+          }
+        }
+      }
+    }
+  } // End get-vrf-info
+
+  rpc get-vrf-vni-info {
+    description
+      "Retrieve mappings between EVPN VNI and VRF.";
+
+    // Note: no input clause.
+
+    output {
+      list vrf-vni-list {
+        leaf vrf-name {
+          type string;
+          description
+            "The VRF name.";
+        }
+        leaf vni-id {
+          type vni-id-type;
+          description
+            "The EVPN VNI.";
+        }
+        leaf vxlan-if-name {
+          type string;
+          description
+            "The VxLAN interface name.";
+        }
+        leaf svi-if-name {
+          type string;
+          description
+            "The SVI interface name.";
+        }
+        leaf router-mac-addr {
+          type yang:mac-address;
+          description
+            "Router MAC address.";
+        }
+        leaf is-up {
+          type empty;
+          description
+            "The state is active.";
+        }
+      }
+    }
+  } // End get-vrf-vni-info
+
+  rpc get-evpn-info {
+    description
+      "Retrieve global information about EVPN.";
+
+    // Note: No input clause.
+
+    output {
+      leaf l2vni-count {
+        type uint32;
+        description
+          "Number of L2 VNIs.";
+      }
+      leaf l3vni-count {
+        type uint32;
+        description
+          "Number of L3 VNIs.";
+      }
+      leaf advertise-gateway {
+        type empty;
+        description
+          "Advertise the gateway MAC-IP.";
+      }
+      leaf advertise-svi {
+        type empty;
+        description
+          "Advertise SVI MAC-IP.";
+      }
+      leaf dup-detect {
+        type empty;
+        description
+          "Duplicate address detection is enabled.";
+      }
+      leaf dad-max-moves {
+        type uint32;
+        description
+          "Maximum moves allowed before address is considered duplicate.";
+      }
+      leaf dad-timeout {
+        type uint32;
+        units "seconds";
+        description
+          "Duplicate address detection timeout.";
+      }
+      leaf dad-freeze {
+        type empty;
+        description
+          "Duplicate address detection freeze enabled.";
+      }
+
+      choice dad-freeze-choice {
+        case freeze-permanent {
+          leaf dad-freeze-perm {
+            type empty;
+            description
+              "Duplicate address detection freeze is permanent.";
+          }
+        }
+        case freeze-time {
+          leaf dad-freeze-time {
+            type uint32;
+            units "seconds";
+            description
+              "Duplicate address detection freeze timer.";
+          }
+        }
+      }
+    }
+  } // End get-evpn-info
+
+  rpc get-vni-info {
+    // If no vni is specified, retrieve global list.
+    input {
+      choice vni-choice {
+        default "all-vnis";
+        case all-vnis {
+          leaf all-vnis {
+            type empty;
+            description
+              "Retrieve information about all VNIs.";
+          }
+        }
+        case single-vni {
+          leaf vni-id {
+            type vni-id-type;
+            description
+              "Retrieve information about a specific EVPN VNI.";
+          }
+        }
+      }
+      leaf detailed-info {
+        type empty;
+        description
+          "Retrieve detailed information.";
+      }
+    }
+
+    output {
+      list vni-list {
+        description
+          "Information about EVPN VNI objects.";
+
+        uses vni-information;
+
+        choice detail-choice {
+          case l2 {
+            description
+              "Detailed L2 information.";
+            uses vni-l2-detail;
+          }
+          case l3 {
+            description
+              "Detailed L3 information.";
+            uses vni-l3-detail;
+          }
+        }
+      }
+    }
+  } // End get-vni-info
+
+  rpc get-evpn-vni-rmac {
+    description
+      "Retrieve information about VxLAN VNI RMACs.";
+
+    input {
+      choice vni-choice {
+        default "all-vnis";
+        case all-vnis {
+          leaf all-vnis {
+            type empty;
+            description
+              "Retrieve information about all VNIs.";
+          }
+        }
+        case single-vni {
+          leaf vni-id {
+            type vni-id-type;
+            description
+              "Retrieve information about a specific EVPN VNI.";
+          }
+          leaf vni-rmac {
+            type yang:mac-address;
+            description
+              "A single RMAC address.";
+          }
+        }
+      }
+    }
+
+    output {
+      list rmac-info-list {
+        leaf rmac {
+          type yang:mac-address;
+          description
+            "The RMAC address.";
+        }
+        leaf remote-vtep {
+          type inet:ipv4-address;
+          description
+            "The remote VTEP IP address.";
+        }
+        leaf refcount {
+          type uint32;
+          description
+            "The refcount of the RMAC.";
+        }
+        list prefix-list {
+          leaf ip-prefix {
+            type inet:ip-prefix;
+            description
+              "IP prefixes associated with the RMAC.";
+          }
+        }
+      }
+    }
+  } // End get-evpn-vni-rmac
+
+  rpc get-evpn-vni-nexthops {
+    description
+      "Retrieve information about EVPN nexthops.";
+
+    input {
+      choice vni-choice {
+        default "all-vnis";
+        case all-vnis {
+          leaf all-vnis {
+            type empty;
+            description
+              "Retrieve information about all VNIs.";
+          }
+        }
+        case single-vni {
+          leaf vni-id {
+            type vni-id-type;
+            description
+              "Retrieve information about a specific EVPN VNI.";
+          }
+          leaf vni-ipaddr {
+            type inet:ip-address;
+            description
+              "A single host IP address (v4 or v6).";
+          }
+        }
+      }
+    }
+
+    output {
+      list nh-info-list {
+        leaf ip-addr {
+          type inet:ip-address;
+          description
+            "The nexthop IP address.";
+        }
+        leaf mac-addr {
+          type yang:mac-address;
+          description
+            "The nexthop MAC address.";
+        }
+        leaf refcount {
+          type uint32;
+          description
+            "The refcount of the RMAC.";
+        }
+        list prefix-list {
+          leaf ip-prefix {
+            type inet:ip-prefix;
+            description
+              "IP prefixes associated with the RMAC.";
+          }
+        }
+      }      
+    }
+  } // End get-evpn-vni-vteps
+
+  rpc clear-evpn-dup-addr {
+    description
+      "Clear duplicate address detection state for one or all VNIs.";
+    input {
+      choice clear-dup-choice {
+        case all-case {
+          leaf all-vnis {
+            type empty;
+            description
+              "Clear all VNIs.";
+          }
+        }
+        case single-case {
+          leaf vni-id {
+            type vni-id-type;
+            description
+              "Clear state for a single EVPN VNI.";
+          }
+          choice ip-mac-choice {
+            description
+              "Clear state for a specific MAC or IP address.";
+            case ip-case {
+              leaf vni-ipaddr {
+                type inet:ip-address;
+                description
+                  "A specific IP address (v4 or v6).";
+              }
+            }
+            case mac-case {
+              leaf mac-addr {
+                type yang:mac-address;
+                description
+                  "A specific MAC address.";
+              }
+            }
+          }
+        }
+      }
+    }
+  } // End clear-evpn-dup-addr
 
 }
