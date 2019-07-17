@@ -163,36 +163,29 @@ zebra_allow_external_route_update_destroy(enum nb_event event,
 }
 
 /*
- * XPath: /frr-zebra:zebra/vrf-vni-mapping/def-vrf
+ * XPath: /frr-zebra:zebra/dplane-queue-limit
  */
-static int zebra_vrf_vni_mapping_def_vrf_create(enum nb_event event,
-						const struct lyd_node *dnode,
-						union nb_resource *resource)
-{
-	/* TODO: implement me. */
-	return NB_OK;
-}
-
-static int zebra_vrf_vni_mapping_def_vrf_destroy(enum nb_event event,
-						 const struct lyd_node *dnode)
+static int zebra_dplane_queue_limit_modify(enum nb_event event,
+					   const struct lyd_node *dnode,
+					   union nb_resource *resource)
 {
 	/* TODO: implement me. */
 	return NB_OK;
 }
 
 /*
- * XPath: /frr-zebra:zebra/vrf-vni-mapping/vrf-id
+ * XPath: /frr-zebra:zebra/vrf-vni-mapping
  */
-static int zebra_vrf_vni_mapping_vrf_id_modify(enum nb_event event,
-					       const struct lyd_node *dnode,
-					       union nb_resource *resource)
+static int zebra_vrf_vni_mapping_create(enum nb_event event,
+					const struct lyd_node *dnode,
+					union nb_resource *resource)
 {
 	/* TODO: implement me. */
 	return NB_OK;
 }
 
-static int zebra_vrf_vni_mapping_vrf_id_destroy(enum nb_event event,
-						const struct lyd_node *dnode)
+static int zebra_vrf_vni_mapping_destroy(enum nb_event event,
+					 const struct lyd_node *dnode)
 {
 	/* TODO: implement me. */
 	return NB_OK;
@@ -328,6 +321,46 @@ static int clear_evpn_dup_addr_rpc(const char *xpath, const struct list *input,
 	return NB_OK;
 }
 
+/*
+ * XPath: /frr-zebra:get-evpn-macs
+ */
+static int get_evpn_macs_rpc(const char *xpath, const struct list *input,
+			     struct list *output)
+{
+	/* TODO: implement me. */
+	return NB_OK;
+}
+
+/*
+ * XPath: /frr-zebra:get-evpn-arp-cache
+ */
+static int get_evpn_arp_cache_rpc(const char *xpath, const struct list *input,
+				  struct list *output)
+{
+	/* TODO: implement me. */
+	return NB_OK;
+}
+
+/*
+ * XPath: /frr-zebra:get-pbr-ipset
+ */
+static int get_pbr_ipset_rpc(const char *xpath, const struct list *input,
+			     struct list *output)
+{
+	/* TODO: implement me. */
+	return NB_OK;
+}
+
+/*
+ * XPath: /frr-zebra:get-pbr-iptable
+ */
+static int get_pbr_iptable_rpc(const char *xpath, const struct list *input,
+			       struct list *output)
+{
+	/* TODO: implement me. */
+	return NB_OK;
+}
+
 /* clang-format off */
 const struct frr_yang_module_info frr_zebra_info = {
 	.name = "frr-zebra",
@@ -374,14 +407,13 @@ const struct frr_yang_module_info frr_zebra_info = {
 			.cbs.destroy = zebra_allow_external_route_update_destroy,
 		},
 		{
-			.xpath = "/frr-zebra:zebra/vrf-vni-mapping/def-vrf",
-			.cbs.create = zebra_vrf_vni_mapping_def_vrf_create,
-			.cbs.destroy = zebra_vrf_vni_mapping_def_vrf_destroy,
+			.xpath = "/frr-zebra:zebra/dplane-queue-limit",
+			.cbs.modify = zebra_dplane_queue_limit_modify,
 		},
 		{
-			.xpath = "/frr-zebra:zebra/vrf-vni-mapping/vrf-id",
-			.cbs.modify = zebra_vrf_vni_mapping_vrf_id_modify,
-			.cbs.destroy = zebra_vrf_vni_mapping_vrf_id_destroy,
+			.xpath = "/frr-zebra:zebra/vrf-vni-mapping",
+			.cbs.create = zebra_vrf_vni_mapping_create,
+			.cbs.destroy = zebra_vrf_vni_mapping_destroy,
 		},
 		{
 			.xpath = "/frr-zebra:zebra/vrf-vni-mapping/vni-id",
@@ -428,6 +460,22 @@ const struct frr_yang_module_info frr_zebra_info = {
 		{
 			.xpath = "/frr-zebra:clear-evpn-dup-addr",
 			.cbs.rpc = clear_evpn_dup_addr_rpc,
+		},
+		{
+			.xpath = "/frr-zebra:get-evpn-macs",
+			.cbs.rpc = get_evpn_macs_rpc,
+		},
+		{
+			.xpath = "/frr-zebra:get-evpn-arp-cache",
+			.cbs.rpc = get_evpn_arp_cache_rpc,
+		},
+		{
+			.xpath = "/frr-zebra:get-pbr-ipset",
+			.cbs.rpc = get_pbr_ipset_rpc,
+		},
+		{
+			.xpath = "/frr-zebra:get-pbr-iptable",
+			.cbs.rpc = get_pbr_iptable_rpc,
 		},
 		{
 			.xpath = NULL,

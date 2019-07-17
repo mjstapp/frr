@@ -629,29 +629,28 @@ module frr-zebra {
         "Allow FRR-controlled routes to be overwritten by external processes";
     }
 
-    container vrf-vni-mapping {
+    leaf dplane-queue-limit {
+      type uint32 {
+        range "0..10000";
+      }
+      default "200";
+      description
+        "Limit on the number of updates queued to the dataplane subsystem.";
+    }
+
+    list vrf-vni-mapping {
       description
         "EVPN VNI mapping corresponding to a VRF.";
-      choice vrf-choice {
-        case default-vrf {
-          leaf def-vrf {
-            type empty;
-            description
-              "Mapping for the default VRF.";
-          }
-        }
-        case vrf-id {
-          leaf vrf-id {
-            type uint32;
-            description
-              "The identifier for a non-default VRF.";
-          }
-        }
+      key "vrf-id";
+      leaf vrf-id {
+        type uint32;
+        description
+          "The identifier for a VRF.";
       }
       leaf vni-id {
         type vni-id-type;
         description
-          "The VNI id to map to the default VRF.";
+          "The VNI id to map to the VRF.";
       }
       leaf prefix-only {
         type empty;
@@ -1101,7 +1100,7 @@ module frr-zebra {
             "The refcount of the RMAC.";
         }
         list prefix-list {
-          leaf ip-prefix {
+          leaf prefix-item {
             type inet:ip-prefix;
             description
               "IP prefixes associated with the RMAC.";
@@ -1158,7 +1157,7 @@ module frr-zebra {
             "The refcount of the RMAC.";
         }
         list prefix-list {
-          leaf ip-prefix {
+          leaf prefix-item {
             type inet:ip-prefix;
             description
               "IP prefixes associated with the RMAC.";
@@ -1209,4 +1208,588 @@ module frr-zebra {
     }
   } // End clear-evpn-dup-addr
 
+  rpc get-evpn-macs {
+    description
+      "Retrieve information about EVPN MAC addresses.";
+    input {
+      choice all-choice {
+        default "all-vni";
+
+        case all-vni {
+          leaf all-vnis {
+            type empty;
+            description
+              "Retrieve information for all VNIs.";
+          }
+          choice all-choices {
+            case detail-case {
+              leaf all-detail {
+                type empty;
+                description
+                  "Include detailed results.";
+              }
+            }
+            case vtep-case {
+              leaf all-vtep-addr {
+                type inet:ipv4-address;
+                description
+                  "A single VTEP address.";
+              }
+            }
+            case dup-case {
+              leaf all-dup {
+                type empty;
+                description
+                  "Show duplicate addresses.";
+              }
+            }
+          }
+        }
+        case single-vni {
+          leaf vni-id {
+            type vni-id-type;
+            description
+              "Retrieve information for a single VNI.";
+          }
+          choice single-choices {
+            case detail-case {
+              leaf single-detail {
+                type empty;
+                description
+                  "Include detailed results.";
+              }
+            }
+            case mac-case {
+              leaf single-mac {
+                type yang:mac-address;
+                description
+                  "A specific MAC address.";
+              }
+            }
+            case vtep-case {
+              leaf single-vtep {
+                type inet:ipv4-address;
+                description
+                  "A single VTEP address.";
+              }
+            }
+            case dup-case {
+              leaf single-dup {
+                type empty;
+                description
+                  "Show duplicate addresses.";
+              }
+            }
+          }
+        }
+      }
+    } // End of input section
+
+    output {
+      list mac-list {
+        leaf mac-addr {
+          type yang:mac-address;
+          description
+            "The MAC address.";
+        }
+        leaf vni {
+          type vni-id-type;
+          description
+            "The VNI value.";
+        }
+        leaf local-sequence {
+          type uint32;
+          description
+            "Local sequence number.";
+        }
+        leaf remote-sequence {
+          type uint32;
+          description
+            "Remote sequence number.";
+        }
+        leaf dad-count {
+          type uint32;
+          description
+            "Duplicate detection counter.";
+        }
+        leaf is-duplicate {
+          type empty;
+          description
+            "Duplicate MAC detected.";
+        }
+        leaf dup-detect-time {
+          type unix-timestamp;
+          description
+            "If a duplicate, the detection time.";
+        }
+        container dup-detect-started {
+          leaf dup-detect-start {
+            type unix-timestamp;
+            description
+              "Duplicate detection process start time.";
+          }
+          leaf dup-count {
+            type uint32;
+            description
+              "Duplicate detection count.";
+          }
+        }
+
+        leaf is-auto {
+          type empty;
+          description
+            "This is an Auto MAC.";
+        }
+        leaf is-sticky {
+          type empty;
+          description
+            "This is a sticky MAC.";
+        }
+        leaf is-default-gw {
+          type empty;
+          description
+            "This is a default-gateway MAC.";
+        }
+        leaf is-remote-gw {
+          type empty;
+          description
+            "This is a remote-gateway MAC.";
+        }
+
+        list neighbor-list {
+          leaf neighbor-addr {
+            type inet:ip-address;
+            description
+              "Neighbor address.";
+          }
+          leaf is-active {
+            type empty;
+            description
+              "Neighbor is active.";
+          }
+        }
+
+        leaf mac-count {
+          type uint32;
+          description
+            "Number of MACs (local and remote).";
+        }
+        choice local-rem-choice {
+          case local-case {
+            leaf intf {
+              type string;
+              description
+                "The local interface name.";
+            }
+            leaf vlan {
+              type uint32;
+              description
+                "A VLAN id.";
+            }
+          }
+          case remote-case {
+            leaf vtep-addr {
+              type inet:ipv4-address;
+              description
+                "The remote VTEP IP address.";
+            }
+          }
+        }
+      }
+    }
+  } // End get-evpn-macs
+
+  rpc get-evpn-arp-cache {
+    description
+      "Retrieve information about EVPN neighbor cache entries.";
+    input {
+      choice all-choice {
+        default "all-vni";
+
+        case all-vni {
+          leaf all-vnis {
+            type empty;
+            description
+              "Retrieve information for all VNIs.";
+          }
+          choice all-choices {
+            case detail-case {
+              leaf all-detail {
+                type empty;
+                description
+                  "Include detailed results.";
+              }
+            }
+            case dup-case {
+              leaf all-dup {
+                type empty;
+                description
+                  "Show duplicates.";
+              }
+            }
+          }
+        }
+        case single-vni {
+          leaf vni-id {
+            type vni-id-type;
+            description
+              "Retrieve information for a single VNI.";
+          }
+          choice single-choices {
+            case vtep-case {
+              leaf single-vtep {
+                type inet:ipv4-address;
+                description
+                  "A single VTEP address.";
+              }
+            }
+            case neighbor-case {
+              leaf neighbor-addr {
+                type inet:ip-address;
+                description
+                  "A single neighbor address.";
+              }
+            }
+            case dup-case {
+              leaf single-dup {
+                type empty;
+                description
+                  "Show duplicates.";
+              }
+            }
+          }
+        }
+      }
+    } // End input section
+
+    output {
+      list vni-list {
+        container vni-container {
+          description
+            "Information for one VNI.";
+          leaf vni-id {
+            type vni-id-type;
+            description
+              "The VNI id.";
+          }
+          list neigh-list {
+            description
+              "Information about a VNI's neighbor cache.";
+
+            leaf mac-addr {
+              type yang:mac-address;
+              description
+                "A neighbor MAC address.";
+            }
+            leaf ip-addr {
+              type inet:ip-address;
+              description
+                "A neighbor IP address.";
+            }
+            leaf state-active {
+              type empty;
+              description
+                "Indicates whether the entry is active.";
+            }
+
+            choice local-remote-choice {
+              case local-case {
+                leaf is-local {
+                  type empty;
+                  description
+                    "The entry is local.";
+                }
+              }
+              case remote-case {
+                leaf is-remote {
+                  type empty;
+                  description
+                    "The entry is remote.";
+                }
+              }
+            }
+
+            leaf is-dup {
+              type empty;
+              description
+                "The entry is a detected duplicate.";
+            }
+            leaf is-default-gw {
+              type empty;
+              description
+                "The entry is a default gateway.";
+            }
+            leaf is-router {
+              type empty;
+              description
+                "The entry is a router.";
+            }
+            leaf local-sequence {
+              type uint32;
+              description
+                "The local sequence number.";
+            }
+            leaf remote-sequence {
+              type uint32;
+              description
+                "The remote sequence number.";
+            }
+            leaf remote-vtep {
+              type inet:ipv4-address;
+              description
+                "The remote VTEP address.";
+            }
+          }
+        }
+      }
+    }
+  } // End get-evpn-arp-cache
+
+  rpc get-pbr-ipset {
+    input {
+      leaf name {
+        type string;
+        description
+          "An optional specific IPset name.";
+      }
+    }
+
+    output {
+      list ipset-list {
+        leaf name {
+          type string;
+          description
+            "The IPset name.";
+        }
+        leaf ipset-type {
+          type enumeration {
+            enum "net-net" {
+              value 1;
+              description
+                "";
+            }
+            enum "net-port-net" {
+              value 2;
+              description
+                "";
+            }
+            enum "net-port" {
+              value 3;
+              description
+                "";
+            }
+            enum "net" {
+              value 4;
+              description
+                "";
+            }
+          }
+        }
+        leaf src-prefix {
+          type inet:ip-prefix;
+          description
+            "";
+        }
+        leaf dest-prefix {
+          type inet:ip-prefix;
+          description
+            "";
+        }
+        leaf src-port {
+          type inet:port-number;
+          description
+            "";
+        }
+        leaf dest-port {
+          type inet:port-number;
+          description
+            "";
+        }
+
+        choice proto-choice {
+          description
+            "Filter UDP/TCP only, or a specific protocol number.";
+          case udp-tcp-case {
+            leaf is-udp-tcp {
+              type empty;
+              description
+                "Filter TCP/UDP ports only.";
+            }
+          }
+          case proto-case {
+            leaf proto {
+              type uint32;
+              description
+                "Filter a specific protocol number.";
+            }
+          }
+        }
+        container icmp-info {
+          description
+            "Additional information for ICMP filters.";
+          leaf type-min {
+            type uint8;
+            description
+              "";
+          }
+          leaf type-max {
+            type uint8;
+            description
+              "";
+          }
+          leaf code-min {
+            type uint8;
+            description
+              "";
+          }
+          leaf code-max {
+            type uint8;
+            description
+              "";
+          }
+        }
+        container ipset-stats {
+          leaf is-unique {
+            type empty;
+            description
+              "";
+          }
+          leaf packet-counter {
+            type uint64;
+            description
+              "";
+          }
+          leaf bytes-counter {
+            type uint64;
+            description
+              "";
+          }
+        }
+      }
+    }
+  } // End get-pbr-ipset
+
+  rpc get-pbr-iptable {
+    input {
+      leaf name {
+        type string;
+        description
+          "An optional single IPtable name.";
+      }
+    }
+
+    output {
+      list iptable-list {
+        leaf name {
+          type string;
+          description
+            "The IPtable name.";
+        }
+        leaf unique-val {
+          type uint32;
+          description
+            "";
+        }
+        choice action-choice {
+          description "The table action.";
+          case drop-case {
+            leaf action-drop {
+              type empty;
+              description "";
+            }
+          }
+          case redirect-case {
+            leaf action-redirect {
+              type empty;
+              description "";
+            }
+          }
+        }
+        leaf min-packet {
+          type uint32;
+          description
+            "";
+        }
+        leaf max-packet {
+          type uint32;
+          description
+            "";
+        }
+        leaf lookup-src-port {
+          type empty;
+          description
+            "";
+        }
+        leaf lookup-dst-port {
+          type empty;
+          description
+            "";
+        }
+        leaf tcp-flags {
+          type uint16;
+          description
+            "";
+        }
+        leaf tcp-flags-mask {
+          type uint16;
+          description
+            "";
+        }
+        leaf protocol-val {
+          type uint32;
+          description "An IP protocol number.";
+        }
+        container dscp-info {
+          leaf dscp-value {
+            type uint32;
+            description
+              "A DSCP value to match.";
+          }
+          leaf invert-match {
+            type empty;
+            description
+              "If set, exclude the specified value";
+          }
+        }
+        container fragment-info {
+          // TODO -- this is an enum, actually
+          leaf fragment-val {
+            type uint32;
+            description "An IP fragment value.";
+          }
+          leaf invert-match {
+            type empty;
+            description
+              "If set, exclude the specified value.";
+          }
+        }
+        container iptable-stats {
+          leaf packet-counter {
+            type uint64;
+            description
+              "";
+          }
+          leaf bytes-counter {
+            type uint64;
+            description
+              "";
+          }
+        }
+        container rule-info {
+          description
+            "Information about a rule, for redirect tables.";
+          leaf table-id {
+            type uint32;
+            description
+              "The rule table id.";
+          }
+          leaf table-fwmark {
+            type uint32;
+            description
+              "The firewall mark for the rule.";
+          }
+        }
+      }
+    }
+  } // End get-pbr-iptable
 }
