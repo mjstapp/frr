@@ -78,7 +78,8 @@ static const struct message zvtep_flood_str[] = {
 /* static function declarations */
 static int ip_prefix_send_to_client(vrf_id_t vrf_id, struct prefix *p,
 				    uint16_t cmd);
-static void zvni_print_neigh(zebra_neigh_t *n, void *ctxt, json_object *json);
+static void zvni_print_neigh(const zebra_neigh_t *n,
+			     void *ctxt, json_object *json);
 static void zvni_print_neigh_hash(struct hash_bucket *bucket, void *ctxt);
 static void zvni_print_dad_neigh_hash(struct hash_bucket *bucket, void *ctxt);
 static void zvni_print_neigh_hash_all_vni(struct hash_bucket *bucket,
@@ -87,7 +88,8 @@ static void zl3vni_print_nh(zebra_neigh_t *n, struct vty *vty,
 			    json_object *json);
 static void zl3vni_print_rmac(zebra_mac_t *zrmac, struct vty *vty,
 			      json_object *json);
-static void zvni_print_mac(zebra_mac_t *mac, void *ctxt, json_object *json);
+static void zvni_print_mac(const zebra_mac_t *mac,
+			   void *ctxt, json_object *json);
 static void zvni_print_mac_hash(struct hash_bucket *bucket, void *ctxt);
 static void zvni_print_mac_hash_all_vni(struct hash_bucket *bucket, void *ctxt);
 static void zvni_print(zebra_vni_t *zvni, void **ctxt);
@@ -722,7 +724,8 @@ static void zvni_find_neigh_addr_width(struct hash_bucket *bucket, void *ctxt)
 /*
  * Print a specific neighbor entry.
  */
-static void zvni_print_neigh(zebra_neigh_t *n, void *ctxt, json_object *json)
+static void zvni_print_neigh(const zebra_neigh_t *n,
+			     void *ctxt, json_object *json)
 {
 	struct vty *vty;
 	char buf1[ETHER_ADDR_STRLEN];
@@ -1169,7 +1172,8 @@ static void zl3vni_print_rmac(zebra_mac_t *zrmac, struct vty *vty,
 /*
  * Print a specific MAC entry.
  */
-static void zvni_print_mac(zebra_mac_t *mac, void *ctxt, json_object *json)
+static void zvni_print_mac(const zebra_mac_t *mac,
+			   void *ctxt, json_object *json)
 {
 	struct vty *vty;
 	zebra_neigh_t *n = NULL;
