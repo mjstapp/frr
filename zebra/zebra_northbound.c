@@ -361,6 +361,26 @@ static int get_pbr_iptable_rpc(const char *xpath, const struct list *input,
 	return NB_OK;
 }
 
+/*
+ * XPath: /frr-zebra:set-debugs
+ */
+static int set_debugs_rpc(const char *xpath, const struct list *input,
+			  struct list *output)
+{
+	/* TODO: implement me. */
+	return NB_OK;
+}
+
+/*
+ * XPath: /frr-zebra:get-debugs
+ */
+static int get_debugs_rpc(const char *xpath, const struct list *input,
+			  struct list *output)
+{
+	/* TODO: implement me. */
+	return NB_OK;
+}
+
 /* clang-format off */
 const struct frr_yang_module_info frr_zebra_info = {
 	.name = "frr-zebra",
@@ -476,6 +496,14 @@ const struct frr_yang_module_info frr_zebra_info = {
 		{
 			.xpath = "/frr-zebra:get-pbr-iptable",
 			.cbs.rpc = get_pbr_iptable_rpc,
+		},
+		{
+			.xpath = "/frr-zebra:set-debugs",
+			.cbs.rpc = set_debugs_rpc,
+		},
+		{
+			.xpath = "/frr-zebra:get-debugs",
+			.cbs.rpc = get_debugs_rpc,
 		},
 		{
 			.xpath = NULL,

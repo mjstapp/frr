@@ -535,6 +535,84 @@ module frr-zebra {
   }
 
   /*
+   * Debug options
+   */
+  grouping zebra-debugs {
+    leaf debug-events {
+      type empty;
+      description "Debug ZAPI events.";
+    }
+    leaf debug-zapi-send {
+      type empty;
+      description "Debug ZAPI messages sent.";
+    }
+    leaf debug-zapi-recv {
+      type empty;
+      description "Debug ZAPI messages received.";
+    }
+    leaf debug-zapi-detail {
+      type empty;
+      description "Debug ZAPI details.";
+    }
+    leaf debug-kernel {
+      type empty;
+      description "Debug kernel events.";
+    }
+    leaf debug-kernel-msg-send {
+      type empty;
+      description "Debug kernel messages sent.";
+    }
+    leaf debug-kernel-msg-recv {
+      type empty;
+      description "Debug kernel messages received.";
+    }
+    leaf debug-rib {
+      type empty;
+      description "Debug RIB processing.";
+    }
+    leaf debug-rib-detail {
+      type empty;
+      description "Debug RIB processing details.";
+    }
+    leaf debug-fpm {
+      type empty;
+      description "Debug the FIB Push Interface subsystem.";
+    }
+    leaf debug-nht {
+      type empty;
+      description "Debug Nexthop-tracking.";
+    }
+    leaf debug-nht-detail {
+      type empty;
+      description "Debug Nexthop-tracking details.";
+    }
+    leaf debug-mpls {
+      type empty;
+      description "Debug MPLS.";
+    }
+    leaf debug-vxlan {
+      type empty;
+      description "Debug VxLAN.";
+    }
+    leaf debug-pw {
+      type empty;
+      description "Debug pseudowires.";
+    }
+    leaf debug-dplane {
+      type empty;
+      description "Debug the dataplane subsystem.";
+    }
+    leaf debug-dplane-detail {
+      type empty;
+      description "Debug dataplane subsystem details.";
+    }
+    leaf debug-mlag {
+      type empty;
+      description "Debug MLAG.";
+    }
+  }
+
+  /*
    * Main zebra container
    */ 
   container zebra {
@@ -1355,7 +1433,6 @@ module frr-zebra {
           description
             "This is a remote-gateway MAC.";
         }
-
         list neighbor-list {
           leaf neighbor-addr {
             type inet:ip-address;
@@ -1752,7 +1829,6 @@ module frr-zebra {
           }
         }
         container fragment-info {
-          // TODO -- this is an enum, actually
           leaf fragment-val {
             type uint32;
             description "An IP fragment value.";
@@ -1792,4 +1868,18 @@ module frr-zebra {
       }
     }
   } // End get-pbr-iptable
+
+  rpc set-debugs {
+    input {
+      uses zebra-debugs;
+    }
+
+  } // End set-debug
+
+  rpc get-debugs {
+    output {
+      uses zebra-debugs;
+    }
+  } // End get-debug
+
 }
