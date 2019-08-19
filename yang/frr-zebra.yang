@@ -24,7 +24,7 @@ module frr-zebra {
   }
 
   import frr-interface {
-    prefix frr-if;
+    prefix frr-interface;
   }
 
   organization
@@ -274,7 +274,7 @@ module frr-zebra {
           "The VNI identifier.";
       }
       leaf vxlan-ifname {
-        type string;
+        type frr-interface:interface-ref;
         description
           "The VxLAN interface name.";
       }
@@ -371,75 +371,75 @@ module frr-zebra {
    */
   grouping zebra-debugs {
     leaf debug-events {
-      type empty;
+      type boolean;
       description "Debug ZAPI events.";
     }
     leaf debug-zapi-send {
-      type empty;
+      type boolean;
       description "Debug ZAPI messages sent.";
     }
     leaf debug-zapi-recv {
-      type empty;
+      type boolean;
       description "Debug ZAPI messages received.";
     }
     leaf debug-zapi-detail {
-      type empty;
+      type boolean;
       description "Debug ZAPI details.";
     }
     leaf debug-kernel {
-      type empty;
+      type boolean;
       description "Debug kernel events.";
     }
     leaf debug-kernel-msg-send {
-      type empty;
+      type boolean;
       description "Debug kernel messages sent.";
     }
     leaf debug-kernel-msg-recv {
-      type empty;
+      type boolean;
       description "Debug kernel messages received.";
     }
     leaf debug-rib {
-      type empty;
+      type boolean;
       description "Debug RIB processing.";
     }
     leaf debug-rib-detail {
-      type empty;
+      type boolean;
       description "Debug RIB processing details.";
     }
     leaf debug-fpm {
-      type empty;
+      type boolean;
       description "Debug the FIB Push Interface subsystem.";
     }
     leaf debug-nht {
-      type empty;
+      type boolean;
       description "Debug Nexthop-tracking.";
     }
     leaf debug-nht-detail {
-      type empty;
+      type boolean;
       description "Debug Nexthop-tracking details.";
     }
     leaf debug-mpls {
-      type empty;
+      type boolean;
       description "Debug MPLS.";
     }
     leaf debug-vxlan {
-      type empty;
+      type boolean;
       description "Debug VxLAN.";
     }
     leaf debug-pw {
-      type empty;
+      type boolean;
       description "Debug pseudowires.";
     }
     leaf debug-dplane {
-      type empty;
+      type boolean;
       description "Debug the dataplane subsystem.";
     }
     leaf debug-dplane-detail {
-      type empty;
+      type boolean;
       description "Debug dataplane subsystem details.";
     }
     leaf debug-mlag {
-      type empty;
+      type boolean;
       description "Debug MLAG.";
     }
   }
@@ -568,6 +568,13 @@ module frr-zebra {
           "Prefix routes only.";
       }
     }
+
+    /*
+     * Debug options
+     */
+    container debugs {
+      uses zebra-debugs;
+    } /* End of debugs */
 
     /*
      * End of configuration attributes
@@ -821,12 +828,12 @@ module frr-zebra {
             "The EVPN VNI.";
         }
         leaf vxlan-if-name {
-          type string;
+          type frr-interface:interface-ref;
           description
             "The VxLAN interface name.";
         }
         leaf svi-if-name {
-          type string;
+          type frr-interface:interface-ref;
           description
             "The SVI interface name.";
         }
@@ -1286,7 +1293,7 @@ module frr-zebra {
         choice local-rem-choice {
           case local-case {
             leaf intf {
-              type string;
+              type frr-interface:interface-ref;
               description
                 "The local interface name.";
             }
@@ -1701,17 +1708,81 @@ module frr-zebra {
     }
   } // End get-pbr-iptable
 
-  rpc set-debugs {
-    input {
-      uses zebra-debugs;
-    }
-
-  } // End set-debug
-
+  /*
+   * Handy 'all-at-once' api to retrieve debugs
+   */
   rpc get-debugs {
     output {
       uses zebra-debugs;
     }
-  } // End get-debug
+  } // End get-debugs
+
+  augment "/frr-interface:lib/frr-interface:interface" {
+    description
+      "Extends interface model with Zebra-related parameters.";
+    container zebra {
+      list ip4-addr-list {
+        description
+          "IPv4 prefixes for an interface.";
+        key "ip4-prefix";
+        leaf ip4-prefix {
+          type inet:ipv4-prefix;
+          description
+            "IPv4 address prefix.";
+        }
+        leaf ip4-peer {
+          type inet:ipv4-prefix;
+          description
+            "Peer prefix, for peer-to-peer interfaces.";
+        }
+        leaf label {
+          type string;
+          description
+            "Optional string label for the address.";
+        }
+      }
+      list ip6-addr-list {
+        description
+          "IPv6 prefixes for an interface.";
+        key "ip6-prefix";
+        leaf ip6-prefix {
+          type inet:ipv6-prefix;
+          description
+            "IPv6 address prefix.";
+        }
+        leaf label {
+          type string;
+          description
+            "Optional string label for the address.";
+        }
+      }
+
+      leaf multicast {
+        type boolean;
+        description
+          "Multicast flag for the interface.";
+      }
+      leaf link-detect {
+        type boolean;
+        description
+          "Link-detection for the interface.";
+      }
+      leaf shutdown {
+        type boolean;
+        description
+          "Interface admin status.";
+      }
+      leaf bandwidth {
+        type uint32 {
+          range "1..100000";
+        }
+        description
+          "Link bandwidth informational parameter, in megabits.";
+      }
+
+      // TODO -- link-params for (experimental/partial TE use in IGP extensions)
+
+    }
+  } // End interface model augmentation
 
 }
