@@ -1,0 +1,35 @@
+module frr-vrf {
+  yang-version 1.1;
+  namespace "http://frrouting.org/yang/vrf";
+  prefix frr-vrf;
+
+  organization
+    "Free Range Routing";
+  contact
+    "FRR Users List: <mailto:frog@lists.frrouting.org>
+     FRR Development List: <mailto:dev@lists.frrouting.org>";
+  description
+    "This module defines a model for managing FRR VRF information.";
+
+  revision 2019-09-20 {
+    description
+      "Initial revision.";
+  }
+
+  /*
+   * VRF object abstraction
+   */
+  grouping frr-vrf {
+    leaf name {
+      type string;
+      description
+        "The VRF name.";
+    }
+    leaf vrf-id {
+      type uint32;
+      description
+        "The VRF id.";
+    }
+  } // End frr-vrf
+
+} // End module
