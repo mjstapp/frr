@@ -341,3 +341,16 @@ Zebra Protocol Commands
 +------------------------------------+-------+
 | ZEBRA_VXLAN_FLOOD_CONTROL          | 92    |
 +------------------------------------+-------+
+
+
+The Zebra Dataplane
+===================
+
+The zebra dataplane subsystem provides a framework for programming
+packet-forwarding. Zebra uses the dataplane to program the local
+kernel as it makes changes to objects such as IP routes, MPLS LSPs,
+and interface IP addresses. The data zebra dataplane uses a modular
+approach, and multiple dataplane plugins may be loaded. The dataplane
+runs a separate pthread, in order to off-load work from the main zebra
+pthread.
+
