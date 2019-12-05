@@ -84,6 +84,7 @@ def setup_module(mod):
         krel, l3mdev_accept))
 
     cmds = ['ip link add {0}-cust1 type vrf table 1001',
+            'ip link set dev {0}-cust1 up',
             'ip link add loop1 type dummy',
             'ip link set loop1 master {0}-cust1',
             'ip link set {0}-eth0 master {0}-cust1']
@@ -95,7 +96,7 @@ def setup_module(mod):
         output = tgen.net[rname].cmd('sysctl -n net.ipv4.tcp_l3mdev_accept')
         logger.info(
             'router {0}: existing tcp_l3mdev_accept was {1}'.format(
-                rname, output))
+                rname, output.rstrip('\n\r')))
 
         if l3mdev_accept:
             output = tgen.net[rname].cmd(
@@ -130,6 +131,10 @@ def test_protocols_convergence():
     if tgen.routers_have_failure():
         pytest.skip(tgen.errors)
 
+#   TODO
+#    wait_count = 160
+    wait_count = 60
+
     # Check IPv4 routing tables.
     logger.info("Checking IPv4 routes for convergence")
 
@@ -142,7 +147,7 @@ def test_protocols_convergence():
         expected = json.loads(open(json_file).read())
         test_func = partial(topotest.router_json_cmp,
                             router, 'show ip route vrf {}-cust1 json'.format(router.name), expected)
-        _, result = topotest.run_and_expect(test_func, None, count=160,
+        _, result = topotest.run_and_expect(test_func, None, count=wait_count,
                                             wait=0.5)
         assertmsg = '"{}" JSON output mismatches'.format(router.name)
         assert result is None, assertmsg
@@ -158,7 +163,7 @@ def test_protocols_convergence():
         expected = json.loads(open(json_file).read())
         test_func = partial(topotest.router_json_cmp,
                             router, 'show ipv6 route vrf {}-cust1 json'.format(router.name), expected)
-        _, result = topotest.run_and_expect(test_func, None, count=160,
+        _, result = topotest.run_and_expect(test_func, None, count=wait_count,
                                             wait=0.5)
         assertmsg = '"{}" JSON output mismatches'.format(router.name)
         assert result is None, assertmsg
