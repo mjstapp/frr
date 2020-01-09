@@ -37,13 +37,12 @@
 #include "hash.h"
 #include "jhash.h"
 
+#include "static_debug.h"
 #include "static_vrf.h"
 #include "static_routes.h"
 #include "static_zebra.h"
 #include "static_nht.h"
 #include "static_vty.h"
-
-bool debug;
 
 /* Zebra structure to hold current status. */
 struct zclient *zclient;
@@ -121,29 +120,39 @@ static int route_notify_owner(ZAPI_CALLBACK_ARGS)
 	switch (note) {
 	case ZAPI_ROUTE_FAIL_INSTALL:
 		static_nht_mark_state(&p, vrf_id, STATIC_NOT_INSTALLED);
-		zlog_warn("%s: Route %s failed to install for table: %u",
-			  __PRETTY_FUNCTION__, buf, table_id);
+		DEBUGD(&static_dbg_events,
+		       "%s: Route %s failed to install for table: %u",
+		       __PRETTY_FUNCTION__, buf, table_id);
 		break;
 	case ZAPI_ROUTE_BETTER_ADMIN_WON:
 		static_nht_mark_state(&p, vrf_id, STATIC_NOT_INSTALLED);
-		zlog_warn("%s: Route %s over-ridden by better route for table: %u",
-			  __PRETTY_FUNCTION__, buf, table_id);
+		DEBUGD(&static_dbg_events,
+		       "%s: Route %s over-ridden by better route for table: %u",
+		       __PRETTY_FUNCTION__, buf, table_id);
 		break;
 	case ZAPI_ROUTE_INSTALLED:
 		static_nht_mark_state(&p, vrf_id, STATIC_INSTALLED);
+		DEBUGD(&static_dbg_events,
+		       "%s: Route %s installed in table %u",
+		       __PRETTY_FUNCTION__, buf, table_id);
 		break;
 	case ZAPI_ROUTE_REMOVED:
 		static_nht_mark_state(&p, vrf_id, STATIC_NOT_INSTALLED);
+		DEBUGD(&static_dbg_events,
+		       "%s: Route %s removed, table %u",
+		       __PRETTY_FUNCTION__, buf, table_id);
 		break;
 	case ZAPI_ROUTE_REMOVE_FAIL:
 		static_nht_mark_state(&p, vrf_id, STATIC_INSTALLED);
-		zlog_warn("%s: Route %s failure to remove for table: %u",
-			  __PRETTY_FUNCTION__, buf, table_id);
+		DEBUGD(&static_dbg_events,
+		       "%s: Route %s failure to remove for table: %u",
+		       __PRETTY_FUNCTION__, buf, table_id);
 		break;
 	}
 
 	return 0;
 }
+
 static void zebra_connected(struct zclient *zclient)
 {
 	zclient_send_reg_requests(zclient, VRF_DEFAULT);
@@ -177,6 +186,7 @@ static_nexthop_is_local(vrf_id_t vrfid, struct prefix *addr, int family)
 	}
 	return false;
 }
+
 static int static_zebra_nexthop_update(ZAPI_CALLBACK_ARGS)
 {
 	struct static_nht_data *nhtd, lookup;
@@ -193,9 +203,13 @@ static int static_zebra_nexthop_update(ZAPI_CALLBACK_ARGS)
 
 	if (nhr.type == ZEBRA_ROUTE_CONNECT) {
 		if (static_nexthop_is_local(vrf_id, &nhr.prefix,
-					nhr.prefix.family))
+					    nhr.prefix.family))
 			nhr.nexthop_num = 0;
 	}
+
+	DEBUGD(&static_dbg_events,
+	       "%s: %u:%pFX, nexthop_num %u",
+	       __PRETTY_FUNCTION__, vrf_id, &nhr.prefix, nhr.nexthop_num);
 
 	memset(&lookup, 0, sizeof(lookup));
 	lookup.nh = &nhr.prefix;
@@ -313,9 +327,10 @@ void static_zebra_nht_register(struct route_node *rn,
 				static_nht_hash_alloc);
 		nhtd->refcount++;
 
-		if (debug)
-			zlog_debug("Registered nexthop(%pFX) for %pRN %d", &p,
-				   rn, nhtd->nh_num);
+		DEBUGD(&static_dbg_events,
+		       "Registered nexthop(%pFX) for %pRN nh_num %d", &p,
+		       rn, nhtd->nh_num);
+
 		if (nhtd->refcount > 1 && nhtd->nh_num) {
 			static_nht_update(&rn->p, nhtd->nh, nhtd->nh_num,
 					  afi, si->nh_vrf_id);
@@ -351,6 +366,10 @@ extern void static_zebra_route_add(struct route_node *rn,
 
 	p = src_pp = NULL;
 	srcdest_rnode_prefixes(rn, &p, &src_pp);
+
+	DEBUGD(&static_dbg_events,
+	       "%s: %u:%pRN %s",
+	       __PRETTY_FUNCTION__, vrf_id, rn, install ? "install" : "delete");
 
 	memset(&api, 0, sizeof(api));
 	api.vrf_id = vrf_id;

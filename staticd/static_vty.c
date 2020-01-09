@@ -1443,6 +1443,7 @@ DEFPY(ipv6_route_vrf,
 		from_str, gate_str, ifname, flag, tag_str, distance_str, label,
 		table_str, false);
 }
+
 DEFPY(debug_staticd,
       debug_staticd_cmd,
       "[no] debug static [{events$events}]",

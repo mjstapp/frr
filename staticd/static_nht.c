@@ -17,14 +17,15 @@
  * with this program; see the file COPYING; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
  */
-#include <zebra.h>
+#include <lib/zebra.h>
 
-#include "prefix.h"
-#include "table.h"
-#include "vrf.h"
-#include "nexthop.h"
-#include "srcdest_table.h"
+#include <lib/prefix.h>
+#include <lib/table.h>
+#include <lib/vrf.h>
+#include <lib/nexthop.h>
+#include <lib/srcdest_table.h>
 
+#include "static_debug.h"
 #include "static_vrf.h"
 #include "static_routes.h"
 #include "static_zebra.h"
@@ -97,6 +98,10 @@ void static_nht_update(struct prefix *sp, struct prefix *nhp,
 
 	struct vrf *vrf;
 
+	DEBUGD(&static_dbg_events,
+	       "%s: %pFX, nh_vrf %u, nh_num %u",
+	       __PRETTY_FUNCTION__, sp, nh_vrf_id, nh_num);
+
 	RB_FOREACH (vrf, vrf_name_head, &vrfs_by_name) {
 		static_nht_update_safi(sp, nhp, nh_num, afi, SAFI_UNICAST,
 				       vrf, nh_vrf_id);
@@ -117,6 +122,10 @@ static void static_nht_reset_start_safi(struct prefix *nhp, afi_t afi,
 	svrf = vrf->info;
 	if (!svrf)
 		return;
+
+	DEBUGD(&static_dbg_events,
+	       "%s: %pFX, nh_vrf %u, afi %d, safi %d",
+	       __PRETTY_FUNCTION__, nhp, nh_vrf_id, afi, safi);
 
 	stable = static_vrf_static_table(afi, safi, svrf);
 	if (!stable)
