@@ -141,6 +141,11 @@ int main(int argc, char **argv, char **envp)
 
 	master = frr_init();
 
+	nexthop_group_init(static_nhg_cb,
+			   static_nhg_add_nexthop_cb,
+			   static_nhg_del_nexthop_cb,
+			   static_nhg_destroy_cb);
+
 	access_list_init();
 	static_debug_init();
 	static_vrf_init();

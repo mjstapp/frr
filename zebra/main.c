@@ -385,6 +385,14 @@ int main(int argc, char **argv)
 
 	zrouter.master = frr_init();
 
+	/* Init the nexthop_group library module, registering callbacks
+	 * for config events.
+	 */
+	nexthop_group_init(rib_nhg_create_cb,
+			   rib_nhg_add_nexthop_cb,
+			   rib_nhg_del_nexthop_cb,
+			   rib_nhg_destroy_cb);
+
 	/* Zebra related initialize. */
 	zebra_router_init();
 	zserv_init();

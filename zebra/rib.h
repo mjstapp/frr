@@ -399,6 +399,14 @@ extern uint8_t route_distance(int type);
 
 extern void zebra_rib_evaluate_rn_nexthops(struct route_node *rn, uint32_t seq);
 
+/* Callbacks for nexthop-group changes from the common lib module */
+void rib_nhg_create_cb(const char *name);
+void rib_nhg_add_nexthop_cb(const struct nexthop_group_cmd *nhgc,
+			    const struct nexthop *nhop);
+void rib_nhg_del_nexthop_cb(const struct nexthop_group_cmd *nhgc,
+			    const struct nexthop *nhop);
+void rib_nhg_destroy_cb(const char *name);
+
 /*
  * Inline functions.
  */

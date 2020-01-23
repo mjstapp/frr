@@ -23,10 +23,10 @@
 #include <lib/memory.h>
 #include <lib/srcdest_table.h>
 #include <lib/if.h>
-#include <lib/vty.h>
 #include <lib/vrf.h>
 #include <lib/memory.h>
 
+#include "static_debug.h"
 #include "static_vrf.h"
 #include "static_routes.h"
 #include "static_memory.h"
@@ -588,4 +588,47 @@ void static_ifindex_update(struct interface *ifp, bool up)
 	static_ifindex_update_af(ifp, up, AFI_IP, SAFI_MULTICAST);
 	static_ifindex_update_af(ifp, up, AFI_IP6, SAFI_UNICAST);
 	static_ifindex_update_af(ifp, up, AFI_IP6, SAFI_MULTICAST);
+}
+
+/*
+ * Callbacks for nexthop-group config changes from the common lib module
+ */
+void static_nhg_cb(const char *name)
+{
+	DEBUGD(&static_dbg_events,
+	       "nhg config created: name %s", name);
+
+	return;
+}
+
+void static_nhg_add_nexthop_cb(const struct nexthop_group_cmd *nhgc,
+			       const struct nexthop *nh)
+{
+	char buf[PREFIX_STRLEN];
+
+	DEBUGD(&static_dbg_events,
+	       "nhg config %s nh add: %s",
+	       nhgc->name, nexthop2str(nh, buf, sizeof(buf)));
+
+	return;
+}
+
+void static_nhg_del_nexthop_cb(const struct nexthop_group_cmd *nhgc,
+			       const struct nexthop *nh)
+{
+	char buf[PREFIX_STRLEN];
+
+	DEBUGD(&static_dbg_events,
+	       "nhg config %s nh del: %s",
+	       nhgc->name, nexthop2str(nh, buf, sizeof(buf)));
+
+	return;
+}
+
+void static_nhg_destroy_cb(const char *name)
+{
+	DEBUGD(&static_dbg_events,
+	       "nhg config destroy: name %s", name);
+
+	return;
 }

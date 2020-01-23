@@ -21,6 +21,7 @@
 #define __STATIC_ROUTES_H__
 
 #include "lib/mpls.h"
+#include "lib/nexthop_group.h"
 
 /* Static route label information */
 struct static_nh_label {
@@ -50,7 +51,7 @@ typedef enum {
  *          zebra for installation
  * When we send the route to Zebra move to SENT_TO_ZEBRA
  *  SENT_TO_ZEBRA -> A way to notice that we've sent the route to zebra
- *                   But have not received a response on it's status yet
+ *                   But have not received a response on its status yet
  * After The response from zebra we move to INSTALLED or FAILED
  *  INSTALLED -> Route was accepted
  *  FAILED -> Route was rejected
@@ -142,4 +143,15 @@ extern void static_cleanup_vrf_ids(struct static_vrf *disable_svrf);
 extern void static_install_intf_nh(struct interface *ifp);
 
 extern void static_ifindex_update(struct interface *ifp, bool up);
+
+/*
+ * Callbacks for nexthop-group config changes from the common lib module
+ */
+void static_nhg_cb(const char *name);
+void static_nhg_add_nexthop_cb(const struct nexthop_group_cmd *nhgc,
+			       const struct nexthop *nh);
+void static_nhg_del_nexthop_cb(const struct nexthop_group_cmd *nhgc,
+			       const struct nexthop *nh);
+void static_nhg_destroy_cb(const char *name);
+
 #endif

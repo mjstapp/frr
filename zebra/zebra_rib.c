@@ -2406,7 +2406,6 @@ void _route_entry_dump(const char *func, union prefixconstptr pp,
 	bool is_srcdst = src_p && src_p->prefixlen;
 	char straddr[PREFIX_STRLEN];
 	char srcaddr[PREFIX_STRLEN];
-	char nhname[PREFIX_STRLEN];
 	struct nexthop *nexthop;
 
 	zlog_debug("%s: dumping RE entry %p for %s%s%s vrf %u", func,
@@ -2426,6 +2425,7 @@ void _route_entry_dump(const char *func, union prefixconstptr pp,
 		   nexthop_group_active_nexthop_num(re->nhe->nhg));
 
 	for (ALL_NEXTHOPS_PTR(re->nhe->nhg, nexthop)) {
+		char nhname[PREFIX_STRLEN];
 		struct interface *ifp;
 		struct vrf *vrf = vrf_lookup_by_id(nexthop->vrf_id);
 
@@ -2450,6 +2450,7 @@ void _route_entry_dump(const char *func, union prefixconstptr pp,
 				  INET6_ADDRSTRLEN);
 			break;
 		}
+
 		zlog_debug("%s: %s %s[%u] vrf %s(%u) with flags %s%s%s%s%s",
 			   straddr, (nexthop->rparent ? "  NH" : "NH"), nhname,
 			   nexthop->ifindex, vrf ? vrf->name : "Unknown",
@@ -3169,7 +3170,7 @@ void rib_update(rib_update_event_t event)
 			      &t_rib_update_threads[event]))
 		rib_update_ctx_fini(&ctx); /* Already scheduled */
 	else if (IS_ZEBRA_DEBUG_EVENT)
-		zlog_debug("%s: Schedued VRF (ALL), event %s", __func__,
+		zlog_debug("%s: Scheduled VRF (ALL), event %s", __func__,
 			   rib_update_event2str(event));
 }
 
@@ -3637,4 +3638,47 @@ struct route_table *rib_tables_iter_next(rib_tables_iter_t *iter)
 		iter->state = RIB_TABLES_ITER_S_DONE;
 
 	return table;
+}
+
+/*
+ * Callbacks for nexthop-group config changes from the common lib module
+ */
+void rib_nhg_create_cb(const char *name)
+{
+	if (IS_ZEBRA_DEBUG_RIB)
+		zlog_debug("nhg config created: name %s", name);
+
+	return;
+}
+
+void rib_nhg_add_nexthop_cb(const struct nexthop_group_cmd *nhgc,
+			    const struct nexthop *nh)
+{
+	char buf[PREFIX_STRLEN];
+
+	if (IS_ZEBRA_DEBUG_RIB)
+		zlog_debug("nhg config %s nh add: %s",
+			   nhgc->name, nexthop2str(nh, buf, sizeof(buf)));
+
+	return;
+}
+
+void rib_nhg_del_nexthop_cb(const struct nexthop_group_cmd *nhgc,
+			    const struct nexthop *nh)
+{
+	char buf[PREFIX_STRLEN];
+
+	if (IS_ZEBRA_DEBUG_RIB)
+		zlog_debug("nhg config %s nh del: %s",
+			   nhgc->name, nexthop2str(nh, buf, sizeof(buf)));
+
+	return;
+}
+
+void rib_nhg_destroy_cb(const char *name)
+{
+	if (IS_ZEBRA_DEBUG_RIB)
+		zlog_debug("nhg config destroy: name %s", name);
+
+	return;
 }
