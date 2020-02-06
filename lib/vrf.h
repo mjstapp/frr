@@ -22,11 +22,10 @@
 #ifndef _ZEBRA_VRF_H
 #define _ZEBRA_VRF_H
 
-#include "openbsd-tree.h"
-#include "linklist.h"
 #include "qobj.h"
 #include "vty.h"
 #include "ns.h"
+#include "privs.h"
 
 #ifdef __cplusplus
 extern "C" {
