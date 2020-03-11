@@ -543,6 +543,14 @@ static void if_addr_wakeup(struct interface *ifp)
 					if_refresh(ifp);
 				}
 
+				/* Special check for explicit unnumbered:
+				 * nothing to 'install' there.
+				 */
+				if (CHECK_FLAG(ifc->conf, ZEBRA_IFC_CONFIGURED)
+				    && (p->prefixlen == 32 &&
+					p->u.prefix4.s_addr == INADDR_ANY))
+					continue;
+
 				dplane_res = dplane_intf_addr_set(ifp, ifc);
 				if (dplane_res ==
 				    ZEBRA_DPLANE_REQUEST_FAILURE) {
@@ -2919,6 +2927,89 @@ DEFUN (ip_address,
 				  NULL);
 }
 
+/*
+ * Explicit unnumbered interface configuration
+ */
+DEFPY(ip_address_unnum,
+      ip_address_unnum_cmd,
+      "[no] ip address unnumbered",
+      NO_STR
+      "Interface Internet Protocol config commands\n"
+      "Set the IP address of an interface\n"
+      "Configure an interface as unnumbered\n")
+{
+	struct connected *ifc;
+	struct listnode *node;
+	struct prefix_ipv4 *p;
+	bool valid = true;
+	VTY_DECLVAR_CONTEXT(interface, ifp);
+
+	/* Handle 'no' form */
+	if (no) {
+		/* Find special all-zeroes address */
+		for (ALL_LIST_ELEMENTS_RO(ifp->connected, node, ifc)) {
+			if (ifc->address->family == AF_INET &&
+			    CHECK_FLAG(ifc->conf, ZEBRA_IFC_CONFIGURED) &&
+			    CHECK_FLAG(ifc->flags, ZEBRA_IFA_UNNUMBERED)) {
+
+				p = (struct prefix_ipv4 *)ifc->address;
+
+				if (p->prefixlen == 32 &&
+				    p->prefix.s_addr == INADDR_ANY)
+					break;
+			}
+		}
+
+		if (ifc == NULL) {
+			vty_out(vty, "%% Interface is not unnumbered\n");
+			return CMD_WARNING_CONFIG_FAILED;
+		}
+
+		/* Remove it */
+		listnode_delete(ifp->connected, ifc);
+		connected_free(&ifc);
+
+		return CMD_SUCCESS;
+	}
+
+	/* Positive form: create a sort of special connected address object
+	 * that will signal unnumbered-ness.
+	 */
+
+	/* Check that no addresses are present */
+	for (ALL_LIST_ELEMENTS_RO(ifp->connected, node, ifc)) {
+		if (ifc->address->family == AF_INET) {
+			valid = false;
+			break;
+		}
+	}
+
+	if (!valid) {
+		vty_out(vty,
+			"%% Cannot configure unnumbered: existing address \n");
+		return CMD_WARNING_CONFIG_FAILED;
+	}
+
+	/* Create all-zeroes object */
+	ifc = connected_new();
+	ifc->ifp = ifp;
+
+	p = prefix_ipv4_new();
+	p->prefixlen = 32;
+
+	ifc->address = (struct prefix *)p;
+	SET_FLAG(ifc->conf, ZEBRA_IFC_CONFIGURED | ZEBRA_IFC_REAL);
+	SET_FLAG(ifc->flags, ZEBRA_IFA_UNNUMBERED);
+
+	listnode_add(ifp->connected, ifc);
+
+	/* TODO TODO */
+	if (connected_is_unnumbered(ifp))
+		vty_out(vty, "ifp IS UNNUMBERED\n");
+
+	return CMD_SUCCESS;
+}
+
 DEFUN (no_ip_address,
        no_ip_address_cmd,
        "no ip address A.B.C.D/M",
@@ -3259,7 +3350,17 @@ static int if_config_write(struct vty *vty)
 				if (CHECK_FLAG(ifc->conf,
 					       ZEBRA_IFC_CONFIGURED)) {
 					char buf[INET6_ADDRSTRLEN];
+
 					p = ifc->address;
+
+					if (CHECK_FLAG(ifc->flags,
+						       ZEBRA_IFA_UNNUMBERED) &&
+					    p->family == AF_INET) {
+						vty_out(vty,
+							" ip address unnumbered\n");
+						continue;
+					}
+
 					vty_out(vty, " ip%s address %s",
 						p->family == AF_INET ? ""
 								     : "v6",
@@ -3345,6 +3446,8 @@ void zebra_if_init(void)
 	install_element(INTERFACE_NODE, &ip_address_label_cmd);
 	install_element(INTERFACE_NODE, &no_ip_address_label_cmd);
 #endif /* HAVE_NETLINK */
+	install_element(INTERFACE_NODE, &ip_address_unnum_cmd);
+
 	install_element(INTERFACE_NODE, &link_params_cmd);
 	install_default(LINK_PARAMS_NODE);
 	install_element(LINK_PARAMS_NODE, &link_params_enable_cmd);
