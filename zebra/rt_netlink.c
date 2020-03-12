@@ -2176,7 +2176,7 @@ ssize_t netlink_nexthop_msg_encode(uint16_t cmd,
 				return 0;
 		} else {
 			const struct nexthop *nh =
-				dplane_ctx_get_nhe_ng(ctx)->nexthop;
+				dplane_ctx_get_nhe_nexthop(ctx);
 			afi_t afi = dplane_ctx_get_nhe_afi(ctx);
 
 			if (afi == AFI_IP)
