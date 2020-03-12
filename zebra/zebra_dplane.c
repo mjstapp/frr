@@ -627,6 +627,12 @@ static void dplane_ctx_free_internal(struct zebra_dplane_ctx *ctx)
 
 			ctx->u.rinfo.nhe.ng.nexthop = NULL;
 		}
+
+		/* Labels may have been allocated */
+		for (int i = 0; i < (*pctx)->u.rinfo.nhe.nh_grp_count; i++)
+			nexthop_del_labels(
+				&(*pctx)->u.rinfo.nhe.nh_grp[i].nexthop);
+
 		break;
 	}
 
