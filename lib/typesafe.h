@@ -178,7 +178,10 @@ macro_pure const type *prefix ## _const_next(const struct prefix##_head *h,    \
 	const struct slist_item *sitem = &item->field.si;                      \
 	return container_of_null(sitem->next, type, field.si);                 \
 }                                                                              \
+                                                                               \
+/* Pull in common version */                                                   \
 TYPESAFE_FIRST_NEXT(prefix, type)                                              \
+                                                                               \
 macro_pure type *prefix ## _next_safe(struct prefix##_head *h, type *item)     \
 {                                                                              \
 	struct slist_item *sitem;                                              \
@@ -284,7 +287,10 @@ macro_pure const type *prefix ## _const_next(const struct prefix##_head *h,    \
 		return NULL;                                                   \
 	return container_of(ditem->next, type, field.di);                      \
 }                                                                              \
+                                                                               \
+/* Pull in common version */                                                   \
 TYPESAFE_FIRST_NEXT(prefix, type)                                              \
+                                                                               \
 macro_pure type *prefix ## _next_safe(struct prefix##_head *h, type *item)     \
 {                                                                              \
 	if (!item)                                                             \
@@ -391,7 +397,10 @@ macro_pure const type *prefix ## _const_next(const struct prefix##_head *h,    \
 		return NULL;                                                   \
 	return container_of(h->hh.array[idx], type, field.hi);                 \
 }                                                                              \
+                                                                               \
+/* Pull in common version */                                                   \
 TYPESAFE_FIRST_NEXT(prefix, type)                                              \
+                                                                               \
 macro_pure type *prefix ## _next_safe(struct prefix##_head *h, type *item)     \
 {                                                                              \
 	if (!item)                                                             \
@@ -492,7 +501,10 @@ macro_inline const type *prefix ## _const_find_lt(                             \
 		sitem = (prev = sitem)->next;                                  \
 	return container_of_null(prev, type, field.si);                        \
 }                                                                              \
+                                                                               \
+/* Pull in common version */                                                   \
 TYPESAFE_FIND_CMP(prefix, type)                                                \
+                                                                               \
 /* TODO: del_hint */                                                           \
 macro_inline type *prefix ## _del(struct prefix##_head *h, type *item)         \
 {                                                                              \
@@ -524,7 +536,10 @@ macro_pure const type *prefix ## _const_next(const struct prefix##_head *h,    \
 	const struct ssort_item *sitem = &item->field.si;                      \
 	return container_of_null(sitem->next, type, field.si);                 \
 }                                                                              \
+                                                                               \
+/* Pull in common version */                                                   \
 TYPESAFE_FIRST_NEXT(prefix, type)                                              \
+                                                                               \
 macro_pure type *prefix ## _next_safe(struct prefix##_head *h, type *item)     \
 {                                                                              \
 	struct ssort_item *sitem;                                              \
@@ -554,6 +569,8 @@ macro_inline const type *prefix ## _const_find(const struct prefix##_head *h,  \
 		return NULL;                                                   \
 	return container_of(sitem, type, field.si);                            \
 }                                                                              \
+                                                                               \
+/* Pull in common version */                                                   \
 TYPESAFE_FIND(prefix, type)                                                    \
 /* ... */
 
@@ -668,7 +685,10 @@ macro_inline const type *prefix ## _const_find(const struct prefix##_head *h,  \
 	}                                                                      \
 	return NULL;                                                           \
 }                                                                              \
+                                                                               \
+/* Pull in common version */                                                   \
 TYPESAFE_FIND(prefix, type)                                                    \
+                                                                               \
 macro_inline type *prefix ## _del(struct prefix##_head *h, type *item)         \
 {                                                                              \
 	if (!h->hh.tabshift)                                                   \
@@ -723,7 +743,10 @@ macro_pure const type *prefix ## _const_next(const struct prefix##_head *h,    \
 			return container_of(h->hh.entries[i], type, field.hi); \
 	return NULL;                                                           \
 }                                                                              \
+                                                                               \
+/* Pull in common version */                                                   \
 TYPESAFE_FIRST_NEXT(prefix, type)                                              \
+                                                                               \
 macro_pure type *prefix ## _next_safe(struct prefix##_head *h, type *item)     \
 {                                                                              \
 	if (!item)                                                             \
@@ -806,7 +829,10 @@ macro_inline const type *prefix ## _const_find_lt(                             \
 			&item->field.si, cmpfn_nuq);                           \
 	return container_of_null(sitem, type, field.si);                       \
 }                                                                              \
+                                                                               \
+/* Pull in common version */                                                   \
 TYPESAFE_FIND_CMP(prefix, type)                                                \
+                                                                               \
 macro_inline type *prefix ## _del(struct prefix##_head *h, type *item)         \
 {                                                                              \
 	struct sskip_item *sitem = typesafe_skiplist_del(&h->sh,               \
@@ -829,7 +855,10 @@ macro_pure const type *prefix ## _const_next(const struct prefix##_head *h,    \
 	const struct sskip_item *next = item->field.si.next[0];                \
 	return container_of_null(next, type, field.si);                        \
 }                                                                              \
+                                                                               \
+/* Pull in common version */                                                   \
 TYPESAFE_FIRST_NEXT(prefix, type)                                              \
+                                                                               \
 macro_pure type *prefix ## _next_safe(struct prefix##_head *h, type *item)     \
 {                                                                              \
 	struct sskip_item *next;                                               \
@@ -859,6 +888,8 @@ macro_inline const type *prefix ## _const_find(const struct prefix##_head *h,  \
 			&item->field.si, &prefix ## __cmp);                    \
 	return container_of_null(sitem, type, field.si);                       \
 }                                                                              \
+                                                                               \
+/* Pull in common version */                                                   \
 TYPESAFE_FIND(prefix, type)                                                    \
                                                                                \
 _DECLARE_SKIPLIST(prefix, type, field,                                         \

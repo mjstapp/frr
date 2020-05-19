@@ -100,7 +100,10 @@ macro_inline const type *prefix ## _const_find_lt(                             \
 	re = typed_rb_find_lt(&h->rr, &item->field.re, cmpfn_nuq);             \
 	return container_of_null(re, type, field.re);                          \
 }                                                                              \
+                                                                               \
+/* Pull in find and compare from typesafe.h */                                 \
 TYPESAFE_FIND_CMP(prefix, type)                                                \
+                                                                               \
 macro_inline type *prefix ## _del(struct prefix##_head *h, type *item)         \
 {                                                                              \
 	struct typed_rb_entry *re;                                             \
@@ -129,7 +132,10 @@ macro_pure const type *prefix ## _const_next(const struct prefix##_head *h,    \
 	re = typed_rb_next(&item->field.re);                                   \
 	return container_of_null(re, type, field.re);                          \
 }                                                                              \
+                                                                               \
+/* Pull in first and next from typesafe.h */                                   \
 TYPESAFE_FIRST_NEXT(prefix, type)                                              \
+                                                                               \
 macro_pure type *prefix ## _next_safe(struct prefix##_head *h, type *item)     \
 {                                                                              \
 	struct typed_rb_entry *re;                                             \
@@ -159,6 +165,8 @@ macro_inline const type *prefix ## _const_find(const struct prefix##_head *h,  \
 	re = typed_rb_find(&h->rr, &item->field.re, &prefix ## __cmp);         \
 	return container_of_null(re, type, field.re);                          \
 }                                                                              \
+                                                                               \
+/* Pull in find from typesafe.h */                                             \
 TYPESAFE_FIND(prefix, type)                                                    \
                                                                                \
 _DECLARE_RBTREE(prefix, type, field, prefix ## __cmp, prefix ## __cmp)         \
