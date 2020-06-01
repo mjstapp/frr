@@ -1883,6 +1883,7 @@ static int dplane_ctx_pw_init(struct zebra_dplane_ctx *ctx,
 	struct route_table *table;
 	struct route_node *rn;
 	struct route_entry *re;
+	const struct nexthop_group *nhg;
 
 	if (IS_ZEBRA_DEBUG_DPLANE_DETAIL)
 		zlog_debug("init dplane ctx %s: pw '%s', loc %u, rem %u",
@@ -1933,10 +1934,11 @@ static int dplane_ctx_pw_init(struct zebra_dplane_ctx *ctx,
 					break;
 			}
 
-			if (re)
+			if (re) {
+				nhg = rib_get_fib_nhg(re);
 				copy_nexthops(&(ctx->u.pw.nhg.nexthop),
-					      re->nhe->nhg.nexthop, NULL);
-
+					      nhg->nexthop, NULL);
+			}
 			route_unlock_node(rn);
 		}
 	}
