@@ -893,6 +893,9 @@ int zapi_opaque_reg_decode(struct stream *msg,
  * type code; some daemons are likely relying on it.
  */
 enum zapi_opaque_registry {
+	/* Zero, Null, invalid value */
+	ZEBRA_OPAQUE_SUBTYPE_NULL = 0,
+
 	/* Request link-state database dump, at restart for example */
 	LINK_STATE_REQUEST = 1,
 	/* Update containing link-state db info */

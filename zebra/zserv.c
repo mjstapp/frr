@@ -63,6 +63,8 @@
 #include "zebra/zserv.h"          /* for zserv */
 #include "zebra/zebra_router.h"
 #include "zebra/zebra_errors.h"   /* for error messages */
+#include "zebra/zebra_opaque.h"
+
 /* clang-format on */
 
 /* privileges */
@@ -190,6 +192,9 @@ static void zserv_client_fail(struct zserv *client)
 
 	atomic_store_explicit(&client->pthread->running, false,
 			      memory_order_relaxed);
+
+	/* Tell the opaque module that this client is down */
+	zebra_opaque_client_fail(client);
 
 	THREAD_OFF(client->t_read);
 	THREAD_OFF(client->t_write);

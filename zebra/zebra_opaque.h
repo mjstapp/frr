@@ -59,5 +59,8 @@ void zebra_opaque_finish(void);
  */
 uint32_t zebra_opaque_enqueue_batch(struct stream_fifo *batch);
 
+/* Handle failure or shutdown of a zapi client. */
+int zebra_opaque_client_fail(struct zserv *client);
+
 
 #endif	/* _ZEBRA_OPAQUE_H */

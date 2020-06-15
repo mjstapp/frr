@@ -57,6 +57,7 @@ struct opq_msg_reg {
 static uint32_t registration_hash(const struct opq_msg_reg *reg);
 static int registration_compare(const struct opq_msg_reg *reg1,
 				const struct opq_msg_reg *reg2);
+static void opq_remove_client(const struct zapi_opaque_reg_info *info);
 
 DECLARE_HASH(opq_regh, struct opq_msg_reg, item, registration_compare,
 	     registration_hash);
@@ -107,7 +108,7 @@ static const char LOG_NAME[] = "Zebra Opaque";
 /* Prototypes */
 
 /* Main event loop, processing incoming message queue */
-static int process_messages(struct thread *event);
+static int opq_process_messages(struct thread *event);
 static int handle_opq_registration(const struct zmsghdr *hdr,
 				   struct stream *msg);
 static int handle_opq_unregistration(const struct zmsghdr *hdr,
@@ -161,7 +162,7 @@ void zebra_opaque_start(void)
 	atomic_store_explicit(&zo_info.run, 1, memory_order_relaxed);
 
 	/* Enqueue an initial event for the pthread */
-	thread_add_event(zo_info.master, process_messages, NULL, 0,
+	thread_add_event(zo_info.master, opq_process_messages, NULL, 0,
 			 &zo_info.t_msgs);
 
 	/* And start the pthread */
@@ -261,7 +262,7 @@ uint32_t zebra_opaque_enqueue_batch(struct stream_fifo *batch)
 		if (IS_ZEBRA_DEBUG_RECV)
 			zlog_debug("%s: received %u messages",
 				   __func__, counter);
-		thread_add_event(zo_info.master, process_messages, NULL, 0,
+		thread_add_event(zo_info.master, opq_process_messages, NULL, 0,
 				 &zo_info.t_msgs);
 	}
 
@@ -269,9 +270,44 @@ uint32_t zebra_opaque_enqueue_batch(struct stream_fifo *batch)
 }
 
 /*
+ * Handle failure or shutdown of a zapi client.
+ */
+int zebra_opaque_client_fail(struct zserv *client)
+{
+	struct stream *msg;
+
+	msg = stream_new(100);
+
+	zclient_create_header(msg, ZEBRA_OPAQUE_UNREGISTER, VRF_DEFAULT);
+
+	/* Type? */
+	stream_putl(msg, 0);
+
+	stream_putc(msg, client->proto);
+	stream_putw(msg, client->instance);
+	stream_putl(msg, client->session_id);
+
+	/* Put length at the first point of the stream. */
+	stream_putw_at(msg, 0, stream_get_endp(msg));
+
+	/*
+	 * Enqueue the message for processing along with other messages.
+	 */
+	frr_with_mutex(&zo_info.mutex) {
+		stream_fifo_push(&zo_info.in_fifo, msg);
+	}
+
+	/* Schedule module pthread to process the batch */
+	thread_add_event(zo_info.master, opq_process_messages, NULL, 0,
+			 &zo_info.t_msgs);
+
+	return 0;
+}
+
+/*
  * Pthread event loop, process the incoming message queue.
  */
-static int process_messages(struct thread *event)
+static int opq_process_messages(struct thread *event)
 {
 	struct stream_fifo fifo;
 	struct stream *msg;
@@ -330,7 +366,7 @@ done:
 	if (need_resched) {
 		atomic_fetch_add_explicit(&zo_info.yields, 1,
 					  memory_order_relaxed);
-		thread_add_event(zo_info.master, process_messages, NULL, 0,
+		thread_add_event(zo_info.master, opq_process_messages, NULL, 0,
 				 &zo_info.t_msgs);
 	}
 
@@ -549,6 +585,19 @@ done:
 	return ret;
 }
 
+/* Unlink a single client from an opaque registration */
+static void opq_reg_unlink(struct opq_msg_reg *reg,
+			   struct opq_client_reg *client)
+{
+	if (client->prev)
+		client->prev->next = client->next;
+	if (client->next)
+		client->next->prev = client->prev;
+	if (reg->clients == client)
+		reg->clients = client->next;
+
+}
+
 /*
  * Process a register/unregister message
  */
@@ -569,6 +618,13 @@ static int handle_opq_unregistration(const struct zmsghdr *hdr,
 	}
 
 	memset(&key, 0, sizeof(key));
+
+	/* Special case - remove client from any/all registrations */
+	if (info.type == 0) {
+		opq_remove_client(&info);
+		ret = 0;
+		goto done;
+	}
 
 	key.type = info.type;
 
@@ -604,12 +660,7 @@ static int handle_opq_unregistration(const struct zmsghdr *hdr,
 			   __func__, opq_client2str(buf, sizeof(buf), client),
 			   info.type);
 
-	if (client->prev)
-		client->prev->next = client->next;
-	if (client->next)
-		client->next->prev = client->prev;
-	if (reg->clients == client)
-		reg->clients = client->next;
+	opq_reg_unlink(reg, client);
 
 	opq_client_free(&client);
 
@@ -627,6 +678,45 @@ done:
 
 	stream_free(msg);
 	return ret;
+}
+
+/* Remove a client from any/all registrations (on failure, e.g.) */
+static void opq_remove_client(const struct zapi_opaque_reg_info *info)
+{
+	struct opq_client_reg *client;
+	struct opq_msg_reg *reg;
+	char buf[50];
+
+	frr_each_safe(opq_regh, &opq_reg_hash, reg) {
+
+		for (client = reg->clients; client; ) {
+			if (opq_client_match(client, info)) {
+
+				if (IS_ZEBRA_DEBUG_RECV)
+					zlog_debug("%s: removed client %s from reg %u",
+						   __func__,
+						   opq_client2str(buf,
+								  sizeof(buf),
+								  client),
+						   info->type);
+
+				opq_reg_unlink(reg, client);
+
+				opq_client_free(&client);
+				break;
+			} else
+				client = client->next;
+		}
+
+		if (reg->clients == NULL) {
+			if (IS_ZEBRA_DEBUG_RECV)
+				zlog_debug("%s: free empty reg %u", __func__,
+					   reg->type);
+			opq_regh_del(&opq_reg_hash, reg);
+			opq_reg_free(&reg);
+		}
+	}
+
 }
 
 /* Compare utility for registered clients */
