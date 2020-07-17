@@ -34,6 +34,7 @@
 #include "lib/libfrr.h"
 #include "zebra/zebra_dplane.h"
 #include "zebra/debug.h"
+#include "lib/nexthop_group_private.h"
 
 static const char *plugin_name = "DPLANE_TEST";
 
@@ -46,8 +47,8 @@ static struct zebra_dplane_ctx *backup_ctx;
 static struct zebra_dplane_ctx *lsp_ctx;
 
 static void backup_ctx_check(struct zebra_dplane_ctx *ctx);
-static int test_backup_switchover(struct thread *event);
-static int test_backup_switch_back(struct thread *event);
+static int test_route_switchover(struct thread *event);
+static int test_route_switch_back(struct thread *event);
 static int test_lsp_switchover(struct thread *event);
 static int test_lsp_switch_back(struct thread *event);
 
@@ -65,7 +66,7 @@ static int plugin_start(struct zebra_dplane_provider *prov)
 }
 
 /*
- * Shutdown/cleanup callback, called from the dataplane pthread.
+ * Shutdown/cleanup callback, called from the main pthread.
  */
 static int plugin_fini(struct zebra_dplane_provider *prov, bool early)
 {
@@ -73,14 +74,21 @@ static int plugin_fini(struct zebra_dplane_provider *prov, bool early)
 		zlog_debug("test plugin fini called %s",
 			   (early ? " (early)": ""));
 
-	/* Clean up backup nexthop and LSP test info if necessary */
-	if (backup_ctx)
-		dplane_ctx_fini(&backup_ctx);
-	if (lsp_ctx)
-		dplane_ctx_fini(&lsp_ctx);
-
-	THREAD_TIMER_OFF(backup_test_t);
-	THREAD_TIMER_OFF(lsp_test_t);
+	if (early) {
+		/* Use async form since these are part of the dplane pthread */
+		thread_cancel_async(dplane_get_thread_master(), &backup_test_t,
+				    NULL);
+		thread_cancel_async(dplane_get_thread_master(), &lsp_test_t,
+				    NULL);
+	} else {
+		/* Final shutdown: free backup nexthop and
+		 * LSP test info if necessary
+		 */
+		if (backup_ctx)
+			dplane_ctx_fini(&backup_ctx);
+		if (lsp_ctx)
+			dplane_ctx_fini(&lsp_ctx);
+	}
 
 	return 0;
 }
@@ -195,7 +203,7 @@ static void backup_ctx_check(struct zebra_dplane_ctx *ctx)
 
 		/* Set a timer to perform the 'switchover' */
 		thread_add_timer(dplane_get_thread_master(),
-				 test_backup_switchover,
+				 test_route_switchover,
 				 NULL, TEST_BACKUP_SWITCH_SECS, &backup_test_t);
 
 	} else if (op == DPLANE_OP_LSP_INSTALL) {
@@ -234,8 +242,11 @@ static void backup_ctx_check(struct zebra_dplane_ctx *ctx)
 				       NEXTHOP_FLAG_HAS_BACKUP)) {
 				SET_FLAG(newnh->nexthop->flags,
 					 NEXTHOP_FLAG_HAS_BACKUP);
-				newnh->nexthop->backup_idx =
-					nexthop->backup_idx;
+				newnh->nexthop->backup_num=
+					nexthop->backup_num;
+				memcpy(newnh->nexthop->backup_idx,
+				       nexthop->backup_idx,
+				       nexthop->backup_num);
 			}
 		}
 
@@ -266,12 +277,16 @@ done:
 	return;
 }
 
-static int test_backup_switchover(struct thread *event)
+static int test_route_switchover(struct thread *event)
 {
 	struct nexthop_group *nhg, nhg_temp;
-	struct nexthop *nexthop, *nh;
+	struct nexthop *nexthop, *nh, *primary;
 	int idx = -1, i;
 	struct zebra_dplane_ctx *ctx;
+
+	/* Init */
+	primary = NULL;
+	nhg_temp.nexthop = NULL;
 
 	/* Don't expect this ... */
 	if (backup_ctx == NULL)
@@ -298,66 +313,80 @@ static int test_backup_switchover(struct thread *event)
 
 	for (nexthop = nhg->nexthop; nexthop; nexthop = nexthop->next) {
 		if (CHECK_FLAG(nexthop->flags, NEXTHOP_FLAG_HAS_BACKUP)) {
-			if (idx == -1) {
-				zlog_debug("%s: switchover for nexthop %pNHv (idx %d)",
+			if (primary == NULL) {
+				zlog_debug("%s: switchover for nexthop %pNHv num %d, idx %d)",
 					   __func__, nexthop,
-					   nexthop->backup_idx);
+					   nexthop->backup_num,
+					   nexthop->backup_idx[0]);
 
-				idx = nexthop->backup_idx;
+				/* Capture the primary and remove it */
+				primary = nexthop;
 
-				/* Remove primary from the ctx */
-				nh = nexthop;
 				if (nexthop->prev)
 					nexthop->prev->next = nexthop->next;
-				else
+				if (nexthop->next)
+					nexthop->next->prev = nexthop->prev;
+				if (nexthop == nhg->nexthop)
 					nhg->nexthop = nexthop->next;
 
-				if (nexthop->next) {
-					nexthop->next->prev = nexthop->prev;
-				}
-
-				nexthop = nexthop->next;
-
-				nexthop_free(nh);
+				nexthop = primary->next;
 
 				if (nexthop == NULL)
 					break;
 			}
 		}
 
-		SET_FLAG(nexthop->flags, NEXTHOP_FLAG_FIB);
+		/* All others set to installed */
+		if (CHECK_FLAG(nexthop->flags, NEXTHOP_FLAG_ACTIVE))
+			SET_FLAG(nexthop->flags, NEXTHOP_FLAG_FIB);
 
-		for (nh = nexthop->resolved; nh; nh = nh->next)
-			SET_FLAG(nh->flags, NEXTHOP_FLAG_FIB);
+		for (nh = nexthop->resolved; nh; nh = nh->next) {
+			if (CHECK_FLAG(nh->flags, NEXTHOP_FLAG_ACTIVE))
+				SET_FLAG(nh->flags, NEXTHOP_FLAG_FIB);
+		}
 	}
 
 	/* We do expect to find something */
-	if (idx == -1)
+	if (primary == NULL)
 		goto done;
 
-	/* Locate the backup nexthop and set its flags */
+	/* Locate the backup nexthop(s) and set flags */
 	nhg = (struct nexthop_group *)dplane_ctx_get_backup_ng(backup_ctx);
-	nexthop = nhg->nexthop;
-	for (i = 0; i < idx && nexthop != NULL; i++)
-		nexthop = nexthop->next;
 
-	if (nexthop == NULL)
-		goto done;
+	for (i = 0; i < primary->backup_num; i++) {
 
-	zlog_debug("%s: backup nexthop %pNHv %s",
-		   __func__, nexthop,
-		   (CHECK_FLAG(nexthop->flags, NEXTHOP_FLAG_RECURSIVE) ?
-		    "(recursive)" : ""));
+		idx = 0;
+		for (nexthop = nhg->nexthop; nexthop; nexthop = nexthop->next) {
+			if (idx == primary->backup_idx[i])
+				break;
+			idx++;
+		}
 
-	if (CHECK_FLAG(nexthop->flags, NEXTHOP_FLAG_RECURSIVE)) {
-		for (nh = nexthop->resolved; nh; nh = nh->next)
-			SET_FLAG(nh->flags, NEXTHOP_FLAG_FIB);
-	} else {
-		SET_FLAG(nexthop->flags, NEXTHOP_FLAG_FIB);
+		if (nexthop == NULL)
+			continue;
+
+		zlog_debug("%s: backup nexthop[%d] %pNHv %s",
+			   __func__, idx, nexthop,
+			   (CHECK_FLAG(nexthop->flags, NEXTHOP_FLAG_RECURSIVE) ?
+			    "(recursive)" : ""));
+
+		nh = nexthop_dup(nexthop, NULL);
+
+		/* Enqueue the backup */
+		_nexthop_add(&nhg_temp.nexthop, nh);
+	}
+
+	/* Now update the flags on the copies of the activated backup(s) */
+	for (nexthop = nhg_temp.nexthop; nexthop; nexthop = nexthop->next) {
+		if (CHECK_FLAG(nexthop->flags, NEXTHOP_FLAG_RECURSIVE)) {
+			for (nh = nexthop->resolved; nh; nh = nh->next)
+				SET_FLAG(nh->flags, NEXTHOP_FLAG_FIB);
+		} else {
+			SET_FLAG(nexthop->flags, NEXTHOP_FLAG_FIB);
+		}
 	}
 
 	/* Attach the backup nhg to the context; this makes a copy of its own */
-	nhg_temp.nexthop = nexthop;
 	dplane_ctx_set_backup_nhg(ctx, &nhg_temp);
 
 	/* Queue the notification for processing */
@@ -367,10 +396,16 @@ static int test_backup_switchover(struct thread *event)
 
 	/* And start timer for switching back from backup to primary */
 	thread_add_timer(dplane_get_thread_master(),
-			 test_backup_switch_back,
+			 test_route_switch_back,
 			 NULL, TEST_BACKUP_SWITCH_SECS, &backup_test_t);
 
 done:
+
+	if (primary)
+		nexthop_free(primary);
+
+	if (nhg_temp.nexthop)
+		nexthops_free(nhg_temp.nexthop);
 
 	/* Clean up if error */
 	if (ctx)
@@ -380,7 +415,7 @@ done:
 }
 
 /* Test switching back from backup to primary */
-static int test_backup_switch_back(struct thread *event)
+static int test_route_switch_back(struct thread *event)
 {
 	struct nexthop_group *nhg;
 	struct nexthop *nexthop, *nh;
@@ -411,10 +446,13 @@ static int test_backup_switch_back(struct thread *event)
 
 	for (nexthop = nhg->nexthop; nexthop; nexthop = nexthop->next) {
 
-		SET_FLAG(nexthop->flags, NEXTHOP_FLAG_FIB);
+		if (CHECK_FLAG(nexthop->flags, NEXTHOP_FLAG_ACTIVE))
+			SET_FLAG(nexthop->flags, NEXTHOP_FLAG_FIB);
 
-		for (nh = nexthop->resolved; nh; nh = nh->next)
-			SET_FLAG(nh->flags, NEXTHOP_FLAG_FIB);
+		for (nh = nexthop->resolved; nh; nh = nh->next) {
+			if (CHECK_FLAG(nh->flags, NEXTHOP_FLAG_ACTIVE))
+				SET_FLAG(nh->flags, NEXTHOP_FLAG_FIB);
+		}
 	}
 
 	/* Send no backups in the notification */
@@ -430,6 +468,9 @@ done:
 	if (ctx)
 		dplane_ctx_fini(&ctx);
 
+	if (backup_ctx)
+		dplane_ctx_fini(&backup_ctx);
+
 	return 0;
 }
 
@@ -442,13 +483,13 @@ static int test_lsp_switchover(struct thread *event)
 	zebra_nhlfe_t *newnh;
 	const struct nhlfe_list_head *list_head;
 	int idx = -1, i;
+	const struct nexthop *primary;
 
 	/* Don't expect this ... */
 	if (lsp_ctx == NULL)
 		goto done;
 
 	zlog_debug("%s: LSP switchover starting", __func__);
-
 
 	/* Make a copy of the context we captured so we can modify it.
 	 */
@@ -457,6 +498,8 @@ static int test_lsp_switchover(struct thread *event)
 	dplane_ctx_set_in_label(ctx, dplane_ctx_get_in_label(lsp_ctx));
 	dplane_ctx_set_type(ctx, dplane_ctx_get_type(lsp_ctx));
 	dplane_ctx_set_table(ctx, dplane_ctx_get_table(lsp_ctx));
+
+	primary = NULL;
 
 	/* Find the first nhlfe with a backup */
 	list_head = dplane_ctx_get_nhlfe_list(lsp_ctx);
@@ -481,13 +524,16 @@ static int test_lsp_switchover(struct thread *event)
 			 */
 			SET_FLAG(newnh->nexthop->flags,
 				 NEXTHOP_FLAG_HAS_BACKUP);
-			newnh->nexthop->backup_idx = nexthop->backup_idx;
+			newnh->nexthop->backup_num = nexthop->backup_num;
+			memcpy(newnh->nexthop->backup_idx,
+			       nexthop->backup_idx,
+			       nexthop->backup_num);
 
-			if (idx == -1) {
+			if (primary == NULL) {
 				zlog_debug("%s: switchover for nhlfe %pNHv",
 					   __func__, nexthop);
 
-				idx = nexthop->backup_idx;
+				primary = nexthop;
 
 				UNSET_FLAG(newnh->flags, NHLFE_FLAG_INSTALLED);
 				UNSET_FLAG(newnh->nexthop->flags,
@@ -506,11 +552,13 @@ static int test_lsp_switchover(struct thread *event)
 	}
 
 	/* We expect to have found an nhlfe with a backup */
-	if (idx == -1)
+	if (primary == NULL)
 		goto done;
 
-	/* Copy backup nhlfes; set the one at 'idx' to installed status */
-	i = 0;
+	/* Copy backup nhlfes, then set the one(s) associated with
+	 * 'primary' to installed status.
+	 */
+	idx = 0;
 	list_head = dplane_ctx_get_backup_nhlfe_list(lsp_ctx);
 	frr_each(nhlfe_list_const, list_head, nhlfe) {
 		nexthop = nhlfe->nexthop;
@@ -527,10 +575,16 @@ static int test_lsp_switchover(struct thread *event)
 			nexthop->nh_label->num_labels,
 			nexthop->nh_label->label);
 
-		if (i == idx) {
-			SET_FLAG(newnh->flags, NHLFE_FLAG_INSTALLED);
-			SET_FLAG(newnh->nexthop->flags, NEXTHOP_FLAG_FIB);
+		for (i = 0; i < primary->backup_num; i++) {
+			if (primary->backup_idx[i] == idx) {
+				SET_FLAG(newnh->flags, NHLFE_FLAG_INSTALLED);
+				SET_FLAG(newnh->nexthop->flags,
+					 NEXTHOP_FLAG_FIB);
+				break;
+			}
 		}
+
+		idx++;
 	}
 
 	/* Queue the notification for processing */
@@ -599,7 +653,10 @@ static int test_lsp_switch_back(struct thread *event)
 			 */
 			SET_FLAG(newnh->nexthop->flags,
 				 NEXTHOP_FLAG_HAS_BACKUP);
-			newnh->nexthop->backup_idx = nexthop->backup_idx;
+			newnh->nexthop->backup_num = nexthop->backup_num;
+			memcpy(newnh->nexthop->backup_idx,
+			       nexthop->backup_idx,
+			       nexthop->backup_num);
 		}
 
 		/* All primary nhlfes are set to installed status */
