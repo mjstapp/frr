@@ -1703,3 +1703,37 @@ void funcname_thread_execute(struct thread_master *m,
 	/* Give back or free thread. */
 	thread_add_unuse(m, thread);
 }
+
+/* Debug signal mask - if 'sig' is NULL, use current effective mask. */
+void debug_signals(const sigset_t *sigs)
+{
+	int i, found;
+	sigset_t tmpsigs;
+	char buf[300];
+
+	if (sigs == NULL) {
+		sigemptyset(&tmpsigs);
+		pthread_sigmask(SIG_BLOCK, NULL, &tmpsigs);
+		sigs = &tmpsigs;
+	}
+
+	found = 0;
+	buf[0] = '\0';
+	for (i = 0; i < 32; i++) {
+		char tmp[20];
+
+		if (sigismember(sigs, i) > 0) {
+			if (found > 0)
+				strlcat(buf, ",", sizeof(buf));
+			snprintf(tmp, sizeof(tmp), "%d", i);
+			strlcat(buf, tmp, sizeof(buf));
+			found++;
+		}
+	}
+
+	if (found == 0)
+		snprintf(buf, sizeof(buf), "<none>");
+
+	zlog_debug("%s: %s", __func__, buf);
+	zlog_tls_buffer_flush();
+}
