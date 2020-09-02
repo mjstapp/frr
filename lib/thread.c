@@ -1485,11 +1485,6 @@ struct thread *thread_fetch(struct thread_master *m, struct thread *fetch)
 	int num = 0;
 
 	do {
-		if (m->handle_signals) {
-			zlog_debug("%s: top of loop", __func__);
-			zlog_tls_buffer_flush();
-		}
-
 		/* Handle signals if any */
 		if (m->handle_signals)
 			quagga_sigevent_process();
@@ -1548,6 +1543,7 @@ struct thread *thread_fetch(struct thread_master *m, struct thread *fetch)
 			break;
 		}
 
+#if 0 /* TODO */
 		if (m->handle_signals && (tw == NULL)) {
 			int i;
 
@@ -1559,6 +1555,7 @@ struct thread *thread_fetch(struct thread_master *m, struct thread *fetch)
 				sleep(1);
 			}
 		}
+#endif	/* TODO */
 
 		/*
 		 * Copy pollfd array + # active pollfds in it. Not necessary to
@@ -1575,11 +1572,13 @@ struct thread *thread_fetch(struct thread_master *m, struct thread *fetch)
 		}
 		pthread_mutex_lock(&m->mtx);
 
+#if 0  /* TODO */
 		if (m->handle_signals && num < 0) {
 			zlog_debug("Thread fetch sees num %d, eintr_p %s",
 				   num, (eintr_p ? "TRUE" : "FALSE"));
 			zlog_tls_buffer_flush();
 		}
+#endif	/* TODO */
 
 		/* Handle any errors received in poll() */
 		if (num < 0) {
