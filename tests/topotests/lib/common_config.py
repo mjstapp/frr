@@ -2615,259 +2615,49 @@ def verify_rib(
     router_list = tgen.routers()
     additional_nexthops_in_required_nhs = []
     found_hops = []
+
+    for router, rnode in router_list.items():
+        if router == dut:
+            break
+
+    # At this point, we expect to have found the router and 'rnode'
+    if router != dut:
+        errormsg = "Cannot find DUT router {} - Failed test\n".format(dut)
+        return errormsg
+
     for routerInput in input_dict.keys():
-        for router, rnode in router_list.items():
-            if router != dut:
-                continue
 
-            logger.info("Checking router %s RIB:", router)
+        logger.info("Checking router %s RIB:", router)
 
-            # Verifying RIB routes
-            if addr_type == "ipv4":
-                command = "show ip route"
-            else:
-                command = "show ipv6 route"
+        # Verifying RIB routes
+        if addr_type == "ipv4":
+            command = "show ip route"
+        else:
+            command = "show ipv6 route"
 
-            found_routes = []
-            missing_routes = []
+        found_routes = []
+        missing_routes = []
 
-            if "static_routes" in input_dict[routerInput]:
-                static_routes = input_dict[routerInput]["static_routes"]
+        if "static_routes" in input_dict[routerInput]:
+            static_routes = input_dict[routerInput]["static_routes"]
 
-                for static_route in static_routes:
-                    if "vrf" in static_route and static_route["vrf"] is not None:
+            for static_route in static_routes:
+                if "vrf" in static_route and static_route["vrf"] is not None:
 
-                        logger.info(
-                            "[DUT: {}]: Verifying routes for VRF:"
-                            " {}".format(router, static_route["vrf"])
-                        )
-
-                        cmd = "{} vrf {}".format(command, static_route["vrf"])
-
-                    else:
-                        cmd = "{}".format(command)
-
-                    if protocol:
-                        cmd = "{} {}".format(cmd, protocol)
-
-                    cmd = "{} json".format(cmd)
-
-                    rib_routes_json = run_frr_cmd(rnode, cmd, isjson=True)
-
-                    # Verifying output dictionary rib_routes_json is not empty
-                    if bool(rib_routes_json) is False:
-                        errormsg = "No route found in rib of router {}..".format(router)
-                        return errormsg
-
-                    network = static_route["network"]
-                    if "no_of_ip" in static_route:
-                        no_of_ip = static_route["no_of_ip"]
-                    else:
-                        no_of_ip = 1
-
-                    if "tag" in static_route:
-                        _tag = static_route["tag"]
-                    else:
-                        _tag = None
-
-                    # Generating IPs for verification
-                    ip_list = generate_ips(network, no_of_ip)
-                    st_found = False
-                    nh_found = False
-
-                    for st_rt in ip_list:
-                        st_rt = str(ipaddress.ip_network(frr_unicode(st_rt)))
-
-                        _addr_type = validate_ip_address(st_rt)
-                        if _addr_type != addr_type:
-                            continue
-
-                        if st_rt in rib_routes_json:
-                            st_found = True
-                            found_routes.append(st_rt)
-
-                            if fib and next_hop:
-                                if type(next_hop) is not list:
-                                    next_hop = [next_hop]
-
-                                for mnh in range(0, len(rib_routes_json[st_rt])):
-                                    if (
-                                        "fib"
-                                        in rib_routes_json[st_rt][mnh]["nexthops"][0]
-                                    ):
-                                        found_hops.append(
-                                            [
-                                                rib_r["ip"]
-                                                for rib_r in rib_routes_json[st_rt][
-                                                    mnh
-                                                ]["nexthops"]
-                                            ]
-                                        )
-
-                                if found_hops[0]:
-                                    missing_list_of_nexthops = set(
-                                        found_hops[0]
-                                    ).difference(next_hop)
-                                    additional_nexthops_in_required_nhs = set(
-                                        next_hop
-                                    ).difference(found_hops[0])
-
-                                    if additional_nexthops_in_required_nhs:
-                                        logger.info(
-                                            "Nexthop "
-                                            "%s is not active for route %s in "
-                                            "RIB of router %s\n",
-                                            additional_nexthops_in_required_nhs,
-                                            st_rt,
-                                            dut,
-                                        )
-                                        errormsg = (
-                                            "Nexthop {} is not active"
-                                            " for route {} in RIB of router"
-                                            " {}\n".format(
-                                                additional_nexthops_in_required_nhs,
-                                                st_rt,
-                                                dut,
-                                            )
-                                        )
-                                        return errormsg
-                                    else:
-                                        nh_found = True
-
-                            elif next_hop and fib is None:
-                                if type(next_hop) is not list:
-                                    next_hop = [next_hop]
-                                found_hops = [
-                                    rib_r["ip"]
-                                    for rib_r in rib_routes_json[st_rt][0]["nexthops"]
-                                ]
-
-                                # Check only the count of nexthops
-                                if count_only:
-                                    if len(next_hop) == len(found_hops):
-                                        nh_found = True
-                                    else:
-                                        errormsg = (
-                                            "Nexthops are missing for "
-                                            "route {} in RIB of router {}: "
-                                            "expected {}, found {}\n".format(
-                                                st_rt, dut, len(next_hop),
-                                                len(found_hops)
-                                            )
-                                        )
-                                        return errormsg
-
-                                # Check the actual nexthops
-                                elif found_hops:
-                                    missing_list_of_nexthops = set(
-                                        found_hops
-                                    ).difference(next_hop)
-                                    additional_nexthops_in_required_nhs = set(
-                                        next_hop
-                                    ).difference(found_hops)
-
-                                    if additional_nexthops_in_required_nhs:
-                                        logger.info(
-                                            "Missing nexthop %s for route"
-                                            " %s in RIB of router %s\n",
-                                            additional_nexthops_in_required_nhs,
-                                            st_rt,
-                                            dut,
-                                        )
-                                        errormsg = (
-                                            "Nexthop {} is Missing for "
-                                            "route {} in RIB of router {}\n".format(
-                                                additional_nexthops_in_required_nhs,
-                                                st_rt,
-                                                dut,
-                                            )
-                                        )
-                                        return errormsg
-                                    else:
-                                        nh_found = True
-
-                            if tag:
-                                if "tag" not in rib_routes_json[st_rt][0]:
-                                    errormsg = (
-                                        "[DUT: {}]: tag is not"
-                                        " present for"
-                                        " route {} in RIB \n".format(dut, st_rt)
-                                    )
-                                    return errormsg
-
-                                if _tag != rib_routes_json[st_rt][0]["tag"]:
-                                    errormsg = (
-                                        "[DUT: {}]: tag value {}"
-                                        " is not matched for"
-                                        " route {} in RIB \n".format(dut, _tag, st_rt,)
-                                    )
-                                    return errormsg
-
-                            if metric is not None:
-                                if "metric" not in rib_routes_json[st_rt][0]:
-                                    errormsg = (
-                                        "[DUT: {}]: metric is"
-                                        " not present for"
-                                        " route {} in RIB \n".format(dut, st_rt)
-                                    )
-                                    return errormsg
-
-                                if metric != rib_routes_json[st_rt][0]["metric"]:
-                                    errormsg = (
-                                        "[DUT: {}]: metric value "
-                                        "{} is not matched for "
-                                        "route {} in RIB \n".format(dut, metric, st_rt,)
-                                    )
-                                    return errormsg
-
-                        else:
-                            missing_routes.append(st_rt)
-
-                if nh_found:
                     logger.info(
-                        "[DUT: {}]: Found next_hop {} for all bgp"
-                        " routes in RIB".format(router, next_hop)
+                        "[DUT: {}]: Verifying routes for VRF:"
+                        " {}".format(router, static_route["vrf"])
                     )
 
-                if len(missing_routes) > 0:
-                    errormsg = "[DUT: {}]: Missing route in RIB, " "routes: {}".format(
-                        dut, missing_routes
-                    )
-                    return errormsg
+                    cmd = "{} vrf {}".format(command, static_route["vrf"])
 
-                if found_routes:
-                    logger.info(
-                        "[DUT: %s]: Verified routes in RIB, found" " routes are: %s\n",
-                        dut,
-                        found_routes,
-                    )
+                else:
+                    cmd = "{}".format(command)
 
-                continue
+                if protocol:
+                    cmd = "{} {}".format(cmd, protocol)
 
-            if "bgp" in input_dict[routerInput]:
-                if (
-                    "advertise_networks"
-                    not in input_dict[routerInput]["bgp"]["address_family"][addr_type][
-                        "unicast"
-                    ]
-                ):
-                    continue
-
-                found_routes = []
-                missing_routes = []
-                advertise_network = input_dict[routerInput]["bgp"]["address_family"][
-                    addr_type
-                ]["unicast"]["advertise_networks"]
-
-                # Continue if there are no network advertise
-                if len(advertise_network) == 0:
-                    continue
-
-                for advertise_network_dict in advertise_network:
-                    if "vrf" in advertise_network_dict:
-                        cmd = "{} vrf {} json".format(command, static_route["vrf"])
-                    else:
-                        cmd = "{} json".format(command)
+                cmd = "{} json".format(cmd)
 
                 rib_routes_json = run_frr_cmd(rnode, cmd, isjson=True)
 
@@ -2876,14 +2666,19 @@ def verify_rib(
                     errormsg = "No route found in rib of router {}..".format(router)
                     return errormsg
 
-                start_ip = advertise_network_dict["network"]
-                if "no_of_network" in advertise_network_dict:
-                    no_of_network = advertise_network_dict["no_of_network"]
+                network = static_route["network"]
+                if "no_of_ip" in static_route:
+                    no_of_ip = static_route["no_of_ip"]
                 else:
-                    no_of_network = 1
+                    no_of_ip = 1
+
+                if "tag" in static_route:
+                    _tag = static_route["tag"]
+                else:
+                    _tag = None
 
                 # Generating IPs for verification
-                ip_list = generate_ips(start_ip, no_of_network)
+                ip_list = generate_ips(network, no_of_ip)
                 st_found = False
                 nh_found = False
 
@@ -2898,48 +2693,259 @@ def verify_rib(
                         st_found = True
                         found_routes.append(st_rt)
 
-                        if next_hop:
+                        if fib and next_hop:
                             if type(next_hop) is not list:
                                 next_hop = [next_hop]
 
-                            count = 0
-                            for nh in next_hop:
-                                for nh_dict in rib_routes_json[st_rt][0]["nexthops"]:
-                                    if nh_dict["ip"] != nh:
-                                        continue
-                                    else:
-                                        count += 1
+                            for mnh in range(0, len(rib_routes_json[st_rt])):
+                                if (
+                                    "fib"
+                                    in rib_routes_json[st_rt][mnh]["nexthops"][0]
+                                ):
+                                    found_hops.append(
+                                        [
+                                            rib_r["ip"]
+                                            for rib_r in rib_routes_json[st_rt][
+                                                    mnh
+                                            ]["nexthops"]
+                                        ]
+                                    )
 
-                            if count == len(next_hop):
-                                nh_found = True
-                            else:
+                            if found_hops[0]:
+                                missing_list_of_nexthops = set(
+                                    found_hops[0]
+                                ).difference(next_hop)
+                                additional_nexthops_in_required_nhs = set(
+                                    next_hop
+                                ).difference(found_hops[0])
+
+                                if additional_nexthops_in_required_nhs:
+                                    logger.info(
+                                        "Nexthop "
+                                        "%s is not active for route %s in "
+                                        "RIB of router %s\n",
+                                        additional_nexthops_in_required_nhs,
+                                        st_rt,
+                                        dut,
+                                    )
+                                    errormsg = (
+                                        "Nexthop {} is not active"
+                                        " for route {} in RIB of router"
+                                        " {}\n".format(
+                                            additional_nexthops_in_required_nhs,
+                                            st_rt,
+                                            dut,
+                                        )
+                                    )
+                                    return errormsg
+                                else:
+                                    nh_found = True
+
+                        elif next_hop and fib is None:
+                            if type(next_hop) is not list:
+                                next_hop = [next_hop]
+                            found_hops = [
+                                rib_r["ip"]
+                                for rib_r in rib_routes_json[st_rt][0]["nexthops"]
+                            ]
+
+                            # Check only the count of nexthops
+                            if count_only:
+                                if len(next_hop) == len(found_hops):
+                                    nh_found = True
+                                else:
+                                    errormsg = (
+                                        "Nexthops are missing for "
+                                        "route {} in RIB of router {}: "
+                                        "expected {}, found {}\n".format(
+                                            st_rt, dut, len(next_hop),
+                                            len(found_hops)
+                                        )
+                                    )
+                                    return errormsg
+
+                            # Check the actual nexthops
+                            elif found_hops:
+                                missing_list_of_nexthops = set(
+                                    found_hops
+                                ).difference(next_hop)
+                                additional_nexthops_in_required_nhs = set(
+                                    next_hop
+                                ).difference(found_hops)
+
+                                if additional_nexthops_in_required_nhs:
+                                    logger.info(
+                                        "Missing nexthop %s for route"
+                                        " %s in RIB of router %s\n",
+                                        additional_nexthops_in_required_nhs,
+                                        st_rt,
+                                        dut,
+                                    )
+                                    errormsg = (
+                                        "Nexthop {} is Missing for "
+                                        "route {} in RIB of router {}\n".format(
+                                            additional_nexthops_in_required_nhs,
+                                            st_rt,
+                                            dut,
+                                        )
+                                    )
+                                    return errormsg
+                                else:
+                                    nh_found = True
+
+                        if tag:
+                            if "tag" not in rib_routes_json[st_rt][0]:
                                 errormsg = (
-                                    "Nexthop {} is Missing"
-                                    " for route {} in "
-                                    "RIB of router {}\n".format(next_hop, st_rt, dut)
+                                    "[DUT: {}]: tag is not"
+                                    " present for"
+                                    " route {} in RIB \n".format(dut, st_rt)
                                 )
                                 return errormsg
+
+                            if _tag != rib_routes_json[st_rt][0]["tag"]:
+                                errormsg = (
+                                    "[DUT: {}]: tag value {}"
+                                    " is not matched for"
+                                    " route {} in RIB \n".format(dut, _tag, st_rt,)
+                                )
+                                return errormsg
+
+                        if metric is not None:
+                            if "metric" not in rib_routes_json[st_rt][0]:
+                                errormsg = (
+                                    "[DUT: {}]: metric is"
+                                    " not present for"
+                                    " route {} in RIB \n".format(dut, st_rt)
+                                )
+                                return errormsg
+
+                            if metric != rib_routes_json[st_rt][0]["metric"]:
+                                errormsg = (
+                                    "[DUT: {}]: metric value "
+                                    "{} is not matched for "
+                                    "route {} in RIB \n".format(dut, metric, st_rt,)
+                                )
+                                return errormsg
+
                     else:
                         missing_routes.append(st_rt)
 
-                if nh_found:
-                    logger.info(
-                        "Found next_hop {} for all routes in RIB"
-                        " of router {}\n".format(next_hop, dut)
-                    )
+            if nh_found:
+                logger.info(
+                    "[DUT: {}]: Found next_hop {} for all bgp"
+                    " routes in RIB".format(router, next_hop)
+                )
 
-                if len(missing_routes) > 0:
-                    errormsg = (
-                        "Missing {} route in RIB of router {}, "
-                        "routes: {} \n".format(addr_type, dut, missing_routes)
-                    )
-                    return errormsg
+            if len(missing_routes) > 0:
+                errormsg = "[DUT: {}]: Missing route in RIB, " "routes: {}".format(
+                    dut, missing_routes
+                )
+                return errormsg
 
-                if found_routes:
-                    logger.info(
-                        "Verified {} routes in router {} RIB, found"
-                        " routes  are: {}\n".format(addr_type, dut, found_routes)
-                    )
+            if found_routes:
+                logger.info(
+                    "[DUT: %s]: Verified routes in RIB, found" " routes are: %s\n",
+                    dut,
+                    found_routes,
+                )
+
+            continue
+
+        if "bgp" in input_dict[routerInput]:
+            if (
+                "advertise_networks"
+                not in input_dict[routerInput]["bgp"]["address_family"][addr_type][
+                    "unicast"
+                ]
+            ):
+                continue
+
+            found_routes = []
+            missing_routes = []
+            advertise_network = input_dict[routerInput]["bgp"]["address_family"][
+                    addr_type]["unicast"]["advertise_networks"]
+
+            # Continue if there are no network advertise
+            if len(advertise_network) == 0:
+                continue
+
+            for advertise_network_dict in advertise_network:
+                if "vrf" in advertise_network_dict:
+                    cmd = "{} vrf {} json".format(command, static_route["vrf"])
+                else:
+                    cmd = "{} json".format(command)
+
+            rib_routes_json = run_frr_cmd(rnode, cmd, isjson=True)
+
+            # Verifying output dictionary rib_routes_json is not empty
+            if bool(rib_routes_json) is False:
+                errormsg = "No route found in rib of router {}..".format(router)
+                return errormsg
+
+            start_ip = advertise_network_dict["network"]
+            if "no_of_network" in advertise_network_dict:
+                no_of_network = advertise_network_dict["no_of_network"]
+            else:
+                no_of_network = 1
+
+            # Generating IPs for verification
+            ip_list = generate_ips(start_ip, no_of_network)
+            st_found = False
+            nh_found = False
+
+            for st_rt in ip_list:
+                st_rt = str(ipaddress.ip_network(frr_unicode(st_rt)))
+
+                _addr_type = validate_ip_address(st_rt)
+                if _addr_type != addr_type:
+                    continue
+
+                if st_rt in rib_routes_json:
+                    st_found = True
+                    found_routes.append(st_rt)
+
+                    if next_hop:
+                        if type(next_hop) is not list:
+                            next_hop = [next_hop]
+
+                        count = 0
+                        for nh in next_hop:
+                            for nh_dict in rib_routes_json[st_rt][0]["nexthops"]:
+                                if nh_dict["ip"] != nh:
+                                    continue
+                                else:
+                                    count += 1
+
+                        if count == len(next_hop):
+                            nh_found = True
+                        else:
+                            errormsg = (
+                                "Nexthop {} is Missing"
+                                " for route {} in "
+                                "RIB of router {}\n".format(next_hop, st_rt, dut)
+                            )
+                            return errormsg
+                else:
+                    missing_routes.append(st_rt)
+
+            if nh_found:
+                logger.info(
+                    "Found next_hop {} for all routes in RIB"
+                    " of router {}\n".format(next_hop, dut)
+                )
+
+            if len(missing_routes) > 0:
+                errormsg = (
+                    "Missing {} route in RIB of router {}, "
+                    "routes: {} \n".format(addr_type, dut, missing_routes)
+                )
+                return errormsg
+
+            if found_routes:
+                logger.info(
+                    "Verified {} routes in router {} RIB, found"
+                    " routes  are: {}\n".format(addr_type, dut, found_routes)
+                )
 
     logger.debug("Exiting lib API: {}".format(sys._getframe().f_code.co_name))
     return True
