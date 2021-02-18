@@ -250,12 +250,12 @@ static void show_nh_backup_helper(struct vty *vty,
 
 	/* Double-check that there _is_ a backup */
 	if (!CHECK_FLAG(nexthop->flags, NEXTHOP_FLAG_HAS_BACKUP) ||
-	    re->nhe->backup_info == NULL || re->nhe->backup_info->nhe == NULL ||
-	    re->nhe->backup_info->nhe->nhg.nexthop == NULL)
+	    re->nhe->backup_nhe == NULL ||
+	    re->nhe->backup_nhe->nhg.nexthop == NULL)
 		return;
 
 	/* Locate the backup nexthop(s) */
-	start = re->nhe->backup_info->nhe->nhg.nexthop;
+	start = re->nhe->backup_nhe->nhg.nexthop;
 	for (i = 0; i < nexthop->backup_num; i++) {
 		/* Format the backup(s) (indented) */
 		backup = start;
@@ -1425,7 +1425,7 @@ static void show_nexthop_group_out(struct vty *vty, struct nhg_hash_entry *nhe)
 
 		show_route_nexthop_helper(vty, NULL, nexthop);
 
-		if (nhe->backup_info == NULL || nhe->backup_info->nhe == NULL) {
+		if (nhe->backup_nhe == NULL) {
 			if (CHECK_FLAG(nexthop->flags,
 				       NEXTHOP_FLAG_HAS_BACKUP))
 				vty_out(vty, " [backup %d]",

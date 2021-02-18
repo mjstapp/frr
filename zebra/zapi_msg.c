@@ -1674,10 +1674,10 @@ static bool zapi_read_nexthops(struct zserv *client, struct prefix *p,
 			       uint32_t message, uint16_t nexthop_num,
 			       uint16_t backup_nh_num,
 			       struct nexthop_group **png,
-			       struct nhg_backup_info **pbnhg)
+			       struct nexthop_group **pbnhg)
 {
 	struct nexthop_group *ng = NULL;
-	struct nhg_backup_info *bnhg = NULL;
+	struct nexthop_group *bnhg = NULL;
 	uint16_t i;
 	struct nexthop *last_nh = NULL;
 
@@ -1691,7 +1691,7 @@ static bool zapi_read_nexthops(struct zserv *client, struct prefix *p,
 			zlog_debug("%s: adding %d backup nexthops", __func__,
 				   backup_nh_num);
 
-		bnhg = zebra_nhg_backup_alloc();
+		bnhg = nexthop_group_new();
 	}
 
 	/*
@@ -1716,7 +1716,7 @@ static bool zapi_read_nexthops(struct zserv *client, struct prefix *p,
 			if (ng)
 				nexthop_group_delete(&ng);
 			if (bnhg)
-				zebra_nhg_backup_free(&bnhg);
+				nexthop_group_delete(&bnhg);
 			return false;
 		}
 
@@ -1806,7 +1806,7 @@ static bool zapi_read_nexthops(struct zserv *client, struct prefix *p,
 			if (last_nh)
 				NEXTHOP_APPEND(last_nh, nexthop);
 			else
-				bnhg->nhe->nhg.nexthop = nexthop;
+				bnhg->nexthop = nexthop;
 
 			last_nh = nexthop;
 		}
@@ -1919,7 +1919,7 @@ static void zread_nhg_add(ZAPI_HANDLER_ARGS)
 	struct stream *s;
 	struct zapi_nhg api_nhg = {};
 	struct nexthop_group *nhg = NULL;
-	struct nhg_backup_info *bnhg = NULL;
+	struct nexthop_group *bnhg = NULL;
 	struct nhg_hash_entry *nhe;
 
 	s = msg;
@@ -1954,8 +1954,9 @@ static void zread_nhg_add(ZAPI_HANDLER_ARGS)
 	nhg->nexthop = NULL;
 
 	if (bnhg) {
-		nhe->backup_info = bnhg;
-		bnhg = NULL;
+		nhe->backup_nhe = zebra_nhg_alloc();
+		nhe->backup_nhe->nhg.nexthop = bnhg->nexthop;
+		bnhg->nexthop = NULL;
 	}
 
 	/*
@@ -1969,8 +1970,7 @@ static void zread_nhg_add(ZAPI_HANDLER_ARGS)
 
 	/* Free any local allocations */
 	nexthop_group_delete(&nhg);
-	zebra_nhg_backup_free(&bnhg);
-
+	nexthop_group_delete(&bnhg);
 }
 
 static void zread_route_add(ZAPI_HANDLER_ARGS)
@@ -1981,7 +1981,7 @@ static void zread_route_add(ZAPI_HANDLER_ARGS)
 	struct prefix_ipv6 *src_p = NULL;
 	struct route_entry *re;
 	struct nexthop_group *ng = NULL;
-	struct nhg_backup_info *bnhg = NULL;
+	struct nexthop_group *bnhg = NULL;
 	int ret;
 	vrf_id_t vrf_id;
 	struct nhg_hash_entry nhe;
@@ -2050,7 +2050,7 @@ static void zread_route_add(ZAPI_HANDLER_ARGS)
 				       api.backup_nexthop_num, NULL, &bnhg))) {
 
 		nexthop_group_delete(&ng);
-		zebra_nhg_backup_free(&bnhg);
+		nexthop_group_delete(&bnhg);
 		XFREE(MTYPE_RE, re);
 		return;
 	}
@@ -2077,7 +2077,7 @@ static void zread_route_add(ZAPI_HANDLER_ARGS)
 			  "%s: Received SRC Prefix but afi is not v6",
 			  __func__);
 		nexthop_group_delete(&ng);
-		zebra_nhg_backup_free(&bnhg);
+		nexthop_group_delete(&bnhg);
 		XFREE(MTYPE_RE, re);
 		return;
 	}
@@ -2089,7 +2089,7 @@ static void zread_route_add(ZAPI_HANDLER_ARGS)
 			  "%s: Received safi: %d but we can only accept UNICAST or MULTICAST",
 			  __func__, api.safi);
 		nexthop_group_delete(&ng);
-		zebra_nhg_backup_free(&bnhg);
+		nexthop_group_delete(&bnhg);
 		XFREE(MTYPE_RE, re);
 		return;
 	}
@@ -2107,7 +2107,12 @@ static void zread_route_add(ZAPI_HANDLER_ARGS)
 	if (!re->nhe_id) {
 		zebra_nhe_init(&nhe, afi, ng->nexthop);
 		nhe.nhg.nexthop = ng->nexthop;
-		nhe.backup_info = bnhg;
+
+		if (bnhg && bnhg->nexthop) {
+			/* Need to allocate backup struct */
+			nhe.backup_nhe = zebra_nhg_alloc();
+			nhe.backup_nhe->nhg.nexthop = bnhg->nexthop;
+		}
 	}
 	ret = rib_add_multipath_nhe(afi, api.safi, &api.prefix, src_p,
 				    re, &nhe);
@@ -2118,7 +2123,7 @@ static void zread_route_add(ZAPI_HANDLER_ARGS)
 	 */
 	nexthop_group_delete(&ng);
 	if (bnhg)
-		zebra_nhg_backup_free(&bnhg);
+		nexthop_group_delete(&bnhg);
 
 	/* Stats */
 	switch (api.prefix.family) {

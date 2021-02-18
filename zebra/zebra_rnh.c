@@ -622,9 +622,8 @@ static bool rnh_check_re_nexthops(const struct route_entry *re,
 	}
 
 	/* Check backup nexthops, if any. */
-	if (nexthop == NULL && re->nhe->backup_info &&
-	    re->nhe->backup_info->nhe) {
-		for (ALL_NEXTHOPS(re->nhe->backup_info->nhe->nhg, nexthop)) {
+	if (nexthop == NULL && re->nhe->backup_nhe) {
+		for (ALL_NEXTHOPS(re->nhe->backup_nhe->nhg, nexthop)) {
 			if (rnh_nexthop_valid(re, nexthop))
 				break;
 		}
@@ -1177,13 +1176,13 @@ static bool compare_valid_nexthops(struct route_entry *r1,
 	if (rnh_hide_backups) {
 		uint32_t hash1 = 0, hash2 = 0;
 
-		if (r1->nhe->backup_info)
+		if (r1->nhe->backup_nhe)
 			hash1 = nexthop_group_hash(
-				&r1->nhe->backup_info->nhe->nhg);
+				&r1->nhe->backup_nhe->nhg);
 
-		if (r2->nhe->backup_info)
+		if (r2->nhe->backup_nhe)
 			hash2 = nexthop_group_hash(
-				&r2->nhe->backup_info->nhe->nhg);
+				&r2->nhe->backup_nhe->nhg);
 
 		if (IS_ZEBRA_DEBUG_NHT_DETAILED)
 			zlog_debug("%s: backup hash1 %#x, hash2 %#x",

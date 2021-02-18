@@ -64,7 +64,7 @@ struct nhg_hash_entry {
 	struct nexthop_group nhg;
 
 	/* If supported, a mapping of backup nexthops. */
-	struct nhg_backup_info *backup_info;
+	struct nhg_hash_entry *backup_nhe;
 
 	/* If this is not a group, it
 	 * will be a single nexthop
@@ -151,14 +151,6 @@ enum nhg_type {
 #define ZEBRA_OWNED(NHE) (NHE->type == ZEBRA_ROUTE_NHG)
 
 #define PROTO_OWNED(NHE) (NHE->id >= ZEBRA_NHG_PROTO_LOWER)
-
-/*
- * Backup nexthops: this is a group object itself, so
- * that the backup nexthops can use the same code as a normal object.
- */
-struct nhg_backup_info {
-	struct nhg_hash_entry *nhe;
-};
 
 enum nhg_ctx_op_e {
 	NHG_CTX_OP_NONE = 0,

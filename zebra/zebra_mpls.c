@@ -2760,7 +2760,7 @@ int mpls_ftn_uninstall(struct zebra_vrf *zvrf, enum lsp_types_t type,
 
 	/* Update backup routes/nexthops also, if present. */
 	if (zebra_nhg_get_backup_nhg(new_nhe) != NULL) {
-		for (nexthop = new_nhe->backup_info->nhe->nhg.nexthop; nexthop;
+		for (nexthop = new_nhe->backup_nhe->nhg.nexthop; nexthop;
 		     nexthop = nexthop->next)
 			nexthop_del_labels(nexthop);
 	}
@@ -3003,7 +3003,7 @@ int mpls_zapi_labels_process(bool add_p, struct zebra_vrf *zvrf,
 		 * and update it.
 		 */
 		found = ftn_update_znh(add_p, zl->type,
-				       new_nhe->backup_info->nhe->nhg.nexthop,
+				       new_nhe->backup_nhe->nhg.nexthop,
 				       znh);
 		if (found) {
 			counter++;

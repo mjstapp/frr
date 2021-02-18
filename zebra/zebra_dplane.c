@@ -2205,9 +2205,9 @@ int dplane_ctx_route_init(struct zebra_dplane_ctx *ctx, enum dplane_op_e op,
 	ctx->u.rinfo.zd_nhg_id = re->nhe->id;
 
 	/* Copy backup nexthop info, if present */
-	if (re->nhe->backup_info && re->nhe->backup_info->nhe) {
+	if (re->nhe->backup_nhe && re->nhe->backup_nhe->nhg.nexthop) {
 		copy_nexthops(&(ctx->u.rinfo.backup_ng.nexthop),
-			      re->nhe->backup_info->nhe->nhg.nexthop, NULL);
+			      re->nhe->backup_nhe->nhg.nexthop, NULL);
 	}
 
 	/*

@@ -77,9 +77,6 @@ static struct nhg_hash_entry *
 depends_find_id_add(struct nhg_connected_tree_head *head, uint32_t id);
 static void depends_decrement_free(struct nhg_connected_tree_head *head);
 
-static struct nhg_backup_info *
-nhg_backup_copy(const struct nhg_backup_info *orig);
-
 /* Helper function for getting the next allocatable ID */
 static uint32_t nhg_get_next_id(void)
 {
@@ -436,8 +433,9 @@ struct nhg_hash_entry *zebra_nhe_copy(const struct nhg_hash_entry *orig,
 	nhe->dplane_ref = zebra_router_get_next_sequence();
 
 	/* Copy backup info also, if present */
-	if (orig->backup_info)
-		nhe->backup_info = nhg_backup_copy(orig->backup_info);
+	if (orig->backup_nhe)
+		nexthop_group_copy(&nhe->backup_nhe->nhg,
+				   &orig->backup_nhe->nhg);
 
 	return nhe;
 }
@@ -481,8 +479,8 @@ uint32_t zebra_nhg_hash_key(const void *arg)
 	uint32_t backup = 0;
 
 	primary = nexthop_group_hash(&(nhe->nhg));
-	if (nhe->backup_info)
-		backup = nexthop_group_hash(&(nhe->backup_info->nhe->nhg));
+	if (nhe->backup_nhe)
+		backup = nexthop_group_hash(&(nhe->backup_nhe->nhg));
 
 	key = jhash_3words(primary, backup, nhe->type, key);
 
@@ -572,18 +570,18 @@ bool zebra_nhg_hash_equal(const void *arg1, const void *arg2)
 		return false;
 
 	/* If there's no backup info, comparison is done. */
-	if ((nhe1->backup_info == NULL) && (nhe2->backup_info == NULL))
+	if ((nhe1->backup_nhe == NULL) && (nhe2->backup_nhe == NULL))
 		return true;
 
 	/* Compare backup info also - test the easy things first */
-	if (nhe1->backup_info && (nhe2->backup_info == NULL))
+	if (nhe1->backup_nhe && (nhe2->backup_nhe == NULL))
 		return false;
-	if (nhe2->backup_info && (nhe1->backup_info == NULL))
+	if (nhe2->backup_nhe && (nhe1->backup_nhe == NULL))
 		return false;
 
 	/* Compare number of backups before actually comparing any */
-	for (nexthop1 = nhe1->backup_info->nhe->nhg.nexthop,
-	     nexthop2 = nhe2->backup_info->nhe->nhg.nexthop;
+	for (nexthop1 = nhe1->backup_nhe->nhg.nexthop,
+	     nexthop2 = nhe2->backup_nhe->nhg.nexthop;
 	     nexthop1 && nexthop2;
 	     nexthop1 = nexthop1->next, nexthop2 = nexthop2->next) {
 		;
@@ -594,8 +592,8 @@ bool zebra_nhg_hash_equal(const void *arg1, const void *arg2)
 		return false;
 
 	/* Have to compare the backup nexthops */
-	for (nexthop1 = nhe1->backup_info->nhe->nhg.nexthop,
-	     nexthop2 = nhe2->backup_info->nhe->nhg.nexthop;
+	for (nexthop1 = nhe1->backup_nhe->nhg.nexthop,
+	     nexthop2 = nhe2->backup_nhe->nhg.nexthop;
 	     nexthop1 && nexthop2;
 	     nexthop1 = nexthop1->next, nexthop2 = nexthop2->next) {
 
@@ -811,7 +809,7 @@ static bool zebra_nhe_find(struct nhg_hash_entry **nhe, /* return value */
 	 * depends tree. The rules here are a little different.
 	 */
 	recursive = false;
-	backup_nhe = newnhe->backup_info->nhe;
+	backup_nhe = newnhe->backup_nhe;
 
 	nh = backup_nhe->nhg.nexthop;
 
@@ -1519,73 +1517,25 @@ zebra_nhg_rib_find_nhe(struct nhg_hash_entry *rt_nhe, afi_t rt_afi)
 	return nhe;
 }
 
-/*
- * Allocate backup nexthop info object. Typically these are embedded in
- * nhg_hash_entry objects.
- */
-struct nhg_backup_info *zebra_nhg_backup_alloc(void)
-{
-	struct nhg_backup_info *p;
-
-	p = XCALLOC(MTYPE_NHG, sizeof(struct nhg_backup_info));
-
-	p->nhe = zebra_nhg_alloc();
-
-	/* Identify the embedded group used to hold the list of backups */
-	SET_FLAG(p->nhe->flags, NEXTHOP_GROUP_BACKUP);
-
-	return p;
-}
-
-/*
- * Free backup nexthop info object, deal with any embedded allocations
- */
-void zebra_nhg_backup_free(struct nhg_backup_info **p)
-{
-	if (p && *p) {
-		if ((*p)->nhe)
-			zebra_nhg_free((*p)->nhe);
-
-		XFREE(MTYPE_NHG, (*p));
-	}
-}
-
 /* Accessor for backup nexthop group */
 struct nexthop_group *zebra_nhg_get_backup_nhg(struct nhg_hash_entry *nhe)
 {
 	struct nexthop_group *p = NULL;
 
 	if (nhe) {
-		if (nhe->backup_info && nhe->backup_info->nhe)
-			p = &(nhe->backup_info->nhe->nhg);
+		if (nhe->backup_nhe && nhe->backup_nhe->nhg.nexthop)
+			p = &(nhe->backup_nhe->nhg);
 	}
 
 	return p;
-}
-
-/*
- * Helper to return a copy of a backup_info - note that this is a shallow
- * copy, meant to be used when creating a new nhe from info passed in with
- * a route e.g.
- */
-static struct nhg_backup_info *
-nhg_backup_copy(const struct nhg_backup_info *orig)
-{
-	struct nhg_backup_info *b;
-
-	b = zebra_nhg_backup_alloc();
-
-	/* Copy list of nexthops */
-	nexthop_group_copy(&(b->nhe->nhg), &(orig->nhe->nhg));
-
-	return b;
 }
 
 static void zebra_nhg_free_members(struct nhg_hash_entry *nhe)
 {
 	nexthops_free(nhe->nhg.nexthop);
 
-	zebra_nhg_backup_free(&nhe->backup_info);
+	if (nhe->backup_nhe)
+		zebra_nhg_free(nhe->backup_nhe);
 
 	/* Decrement to remove connection ref */
 	nhg_connected_tree_decrement_ref(&nhe->nhg_depends);
@@ -1859,7 +1809,7 @@ static int resolve_backup_nexthops(const struct nexthop *nexthop,
 			break;
 
 		/* Need to create/copy a new backup */
-		bnh = nhe->backup_info->nhe->nhg.nexthop;
+		bnh = nhe->backup_nhe->nhg.nexthop;
 		for (j = 0; j < idx; j++) {
 			if (bnh == NULL)
 				break;
@@ -1870,8 +1820,8 @@ static int resolve_backup_nexthops(const struct nexthop *nexthop,
 		if (bnh == NULL)
 			continue;
 
-		if (resolve_nhe->backup_info == NULL)
-			resolve_nhe->backup_info = zebra_nhg_backup_alloc();
+		if (resolve_nhe->backup_nhe == NULL)
+			resolve_nhe->backup_nhe = zebra_nhg_alloc();
 
 		/* Update backup info in the resolving nexthop and its nhe */
 		newnh = nexthop_dup_no_recurse(bnh, NULL);
@@ -1914,7 +1864,7 @@ static int resolve_backup_nexthops(const struct nexthop *nexthop,
 		 * backup list, and add to map struct.
 		 */
 		j = 0;
-		nh = resolve_nhe->backup_info->nhe->nhg.nexthop;
+		nh = resolve_nhe->backup_nhe->nhg.nexthop;
 		if (nh) {
 			while (nh->next) {
 				nh = nh->next;
@@ -1925,7 +1875,7 @@ static int resolve_backup_nexthops(const struct nexthop *nexthop,
 			j++;
 
 		} else	/* First one */
-			resolve_nhe->backup_info->nhe->nhg.nexthop = newnh;
+			resolve_nhe->backup_nhe->nhg.nexthop = newnh;
 
 		/* Capture index */
 		resolved->backup_idx[resolved->backup_num] = j;
@@ -2648,7 +2598,7 @@ int nexthop_active_update(struct route_node *rn, struct route_entry *re)
 		goto backups_done;
 
 	backup_active = nexthop_list_active_update(
-		rn, re, curr_nhe->backup_info->nhe, true /*is_backup*/);
+		rn, re, curr_nhe->backup_nhe, true /*is_backup*/);
 
 	if (IS_ZEBRA_DEBUG_NHG_DETAIL)
 		zlog_debug("%s: re %p backup_active %u", __func__, re,
@@ -2783,7 +2733,7 @@ static uint8_t zebra_nhg_nhe2grp_internal(struct nh_grp *grp,
 		}
 	}
 
-	if (nhe->backup_info == NULL || nhe->backup_info->nhe == NULL)
+	if (nhe->backup_nhe == NULL || nhe->backup_nhe->nhg.nexthop == NULL)
 		goto done;
 
 	/* TODO -- For now, we are not trying to use or install any
