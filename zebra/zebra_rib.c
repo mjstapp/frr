@@ -89,6 +89,9 @@ enum meta_queue_indexes {
 	META_QUEUE_GR_RUN,
 };
 
+/* Avoid re-installing routes where the route<->nhg is already correct */
+static bool enable_optimize_nhg_replace;
+
 /* Each route type's string and default distance value. */
 static const struct {
 	int key;
@@ -5106,6 +5109,19 @@ static int rib_dplane_results(struct dplane_ctx_list_head *ctxlist)
 			&t_dplane);
 
 	return 0;
+}
+
+/*
+ * UI apis to control route 'replace' operations when using nhgs.
+ */
+bool rib_get_optimize_nhg_replace(void)
+{
+	return enable_optimize_nhg_replace;
+}
+
+void rib_set_optimize_nhg_replace(bool set)
+{
+	enable_optimize_nhg_replace = set;
 }
 
 /*

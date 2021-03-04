@@ -490,6 +490,10 @@ extern void rib_update_handle_vrf_all(enum rib_update_event event, int rtype);
 extern struct route_node *
 rib_find_rn_from_ctx(const struct zebra_dplane_ctx *ctx);
 
+/* UI control for route replace operations with nhgs. */
+bool rib_get_optimize_nhg_replace(void);
+void rib_set_optimize_nhg_replace(bool set);
+
 /*
  * Inline functions.
  */
