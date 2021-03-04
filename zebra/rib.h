@@ -444,6 +444,10 @@ extern uint8_t route_distance(int type);
 
 extern void zebra_rib_evaluate_rn_nexthops(struct route_node *rn, uint32_t seq);
 
+/* UI control for route replace operations with nhgs. */
+bool rib_get_optimize_nhg_replace(void);
+void rib_set_optimize_nhg_replace(bool set);
+
 /*
  * Inline functions.
  */

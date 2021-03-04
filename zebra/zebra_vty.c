@@ -3929,6 +3929,9 @@ static int config_write_protocol(struct vty *vty)
 	netlink_config_write_helper(vty);
 #endif /* HAVE_NETLINK */
 
+	if (rib_get_optimize_nhg_replace())
+		vty_out(vty, "zebra optimize route-replace");
+
 	return 1;
 }
 
@@ -4291,6 +4294,19 @@ DEFUN_HIDDEN(no_zebra_kernel_netlink_batch_tx_buf,
 }
 
 #endif /* HAVE_NETLINK */
+
+DEFPY (rib_optimize_nhg_replace,
+       rib_optimize_nhg_replace_cmd,
+       "[no] zebra optimize route-replace",
+       NO_STR
+       ZEBRA_STR
+       "Optimize RIB operations\n"
+       "Optimize route-replacement using nexthop-groups\n")
+{
+	rib_set_optimize_nhg_replace(!no);
+
+	return CMD_SUCCESS;
+}
 
 /* IP node for static routes. */
 static int zebra_ip_config(struct vty *vty);

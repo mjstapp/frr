@@ -74,8 +74,11 @@ static struct dplane_ctx_q rib_dplane_q;
 DEFINE_HOOK(rib_update, (struct route_node * rn, const char *reason),
 	    (rn, reason));
 
-/* Should we allow non Quagga processes to delete our routes */
+/* Should we allow non-FRR processes to delete our routes */
 extern int allow_delete;
+
+/* Avoid re-installing routes where the route<->nhg is already correct */
+static bool enable_optimize_nhg_replace;
 
 /* Each route type's string and default distance value. */
 static const struct {
@@ -4108,6 +4111,19 @@ static int rib_dplane_results(struct dplane_ctx_q *ctxlist)
 			 &t_dplane);
 
 	return 0;
+}
+
+/*
+ * UI apis to control route 'replace' operations when using nhgs.
+ */
+bool rib_get_optimize_nhg_replace(void)
+{
+	return enable_optimize_nhg_replace;
+}
+
+void rib_set_optimize_nhg_replace(bool set)
+{
+	enable_optimize_nhg_replace = set;
 }
 
 /*
