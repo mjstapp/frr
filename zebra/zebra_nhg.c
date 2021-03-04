@@ -473,6 +473,10 @@ uint32_t zebra_nhg_hash_key(const void *arg)
 	uint32_t primary = 0;
 	uint32_t backup = 0;
 
+	/* Use cached value if possible */
+	if (nhe->hash_value > 0)
+		return nhe->hash_value;
+
 	primary = nexthop_group_hash(&(nhe->nhg));
 	if (nhe->backup_info)
 		backup = nexthop_group_hash(&(nhe->backup_info->nhe->nhg));
@@ -480,6 +484,9 @@ uint32_t zebra_nhg_hash_key(const void *arg)
 	key = jhash_3words(primary, backup, nhe->type, key);
 
 	key = jhash_2words(nhe->vrf_id, nhe->afi, key);
+
+	/* TODO -- don't love casting away the const, but ... */
+	((struct nhg_hash_entry *)nhe)->hash_value = key;
 
 	return key;
 }

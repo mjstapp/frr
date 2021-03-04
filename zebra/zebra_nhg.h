@@ -45,6 +45,10 @@ struct nhg_hash_entry {
 	uint16_t zapi_instance;
 	uint32_t zapi_session;
 
+	/* Cache hash of this nhe */
+	uint32_t hash_value;
+
+	/* Embedded list of nexthops */
 	struct nexthop_group nhg;
 
 	/* If supported, a mapping of backup nexthops. */
