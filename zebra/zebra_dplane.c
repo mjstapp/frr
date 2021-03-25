@@ -2403,6 +2403,10 @@ int dplane_ctx_lsp_init(struct zebra_dplane_ctx *ctx, enum dplane_op_e op,
 		/* Need to copy flags too */
 		new_nhlfe->flags = nhlfe->flags;
 		new_nhlfe->nexthop->flags = nhlfe->nexthop->flags;
+
+		/* A backup may be 'best', if no primary is valid. */
+		if (nhlfe == lsp->best_nhlfe)
+			ctx->u.lsp.best_nhlfe = new_nhlfe;
 	}
 
 	/* On error the ctx will be cleaned-up, so we don't need to

@@ -758,6 +758,53 @@ static int nhlfe_nexthop_active(zebra_nhlfe_t *nhlfe)
 	return CHECK_FLAG(nexthop->flags, NEXTHOP_FLAG_ACTIVE);
 }
 
+static void lsp_nhlfe_list_check(zebra_lsp_t *lsp,
+				 struct nhlfe_list_head *list,
+				 bool *changed_p)
+{
+	zebra_nhlfe_t *nhlfe;
+	struct nexthop *nexthop;
+
+	/*
+	 * If best path exists, see if there is ECMP. While doing this, note if
+	 * a new (uninstalled) NHLFE has been selected,
+	 * an installed entry that is still selected has a change,
+	 * or an installed entry is to be removed.
+	 */
+	frr_each(nhlfe_list, list, nhlfe) {
+		int nh_chg, nh_sel, nh_inst;
+
+		nexthop = nhlfe->nexthop;
+		if (!nexthop) // unexpected
+			continue;
+
+		if (!CHECK_FLAG(nhlfe->flags, NHLFE_FLAG_DELETED)
+		    && CHECK_FLAG(nexthop->flags, NEXTHOP_FLAG_ACTIVE)
+		    && (nhlfe->distance == lsp->best_nhlfe->distance)) {
+			SET_FLAG(nhlfe->flags, NHLFE_FLAG_SELECTED);
+			SET_FLAG(nhlfe->flags, NHLFE_FLAG_MULTIPATH);
+			lsp->num_ecmp++;
+		}
+
+		if (CHECK_FLAG(lsp->flags,
+			       LSP_FLAG_INSTALLED) && !(*changed_p)) {
+			nh_chg = CHECK_FLAG(nhlfe->flags, NHLFE_FLAG_CHANGED);
+			nh_sel = CHECK_FLAG(nhlfe->flags, NHLFE_FLAG_SELECTED);
+			nh_inst =
+				CHECK_FLAG(nhlfe->flags, NHLFE_FLAG_INSTALLED);
+
+			if ((nh_sel && !nh_inst)
+			    || (nh_sel && nh_inst && nh_chg)
+			    || (nh_inst && !nh_sel))
+				*changed_p = true;
+		}
+
+		/* We have finished examining, clear changed flag. */
+		UNSET_FLAG(nhlfe->flags, NHLFE_FLAG_CHANGED);
+	}
+
+}
+
 /*
  * Walk through NHLFEs for a LSP forwarding entry, verify nexthop
  * reachability and select the best. Multipath entries are also
@@ -768,8 +815,7 @@ static void lsp_select_best_nhlfe(zebra_lsp_t *lsp)
 {
 	zebra_nhlfe_t *nhlfe;
 	zebra_nhlfe_t *best;
-	struct nexthop *nexthop;
-	int changed = 0;
+	bool changed = false;
 
 	if (!lsp)
 		return;
@@ -794,57 +840,39 @@ static void lsp_select_best_nhlfe(zebra_lsp_t *lsp)
 		}
 	}
 
-	lsp->best_nhlfe = best;
-	if (!lsp->best_nhlfe)
-		return;
-
 	/*
 	 * Check the active status of backup nhlfes also
 	 */
 	frr_each_safe(nhlfe_list, &lsp->backup_nhlfe_list, nhlfe) {
-		if (!CHECK_FLAG(nhlfe->flags, NHLFE_FLAG_DELETED))
-			(void)nhlfe_nexthop_active(nhlfe);
+		/* Clear selection flags. */
+		UNSET_FLAG(nhlfe->flags,
+			   (NHLFE_FLAG_SELECTED | NHLFE_FLAG_MULTIPATH));
+
+		if (!CHECK_FLAG(nhlfe->flags, NHLFE_FLAG_DELETED)
+		    && nhlfe_nexthop_active(nhlfe)) {
+			if (!best || (nhlfe->distance < best->distance))
+				best = nhlfe;
+		}
 	}
+
+	lsp->best_nhlfe = best;
+
+	/* If we found no valid nh, just return. */
+	if (!lsp->best_nhlfe)
+		return;
 
 	/* Mark best NHLFE as selected. */
 	SET_FLAG(lsp->best_nhlfe->flags, NHLFE_FLAG_SELECTED);
 
 	/*
 	 * If best path exists, see if there is ECMP. While doing this, note if
-	 * a
-	 * new (uninstalled) NHLFE has been selected, an installed entry that is
-	 * still selected has a change or an installed entry is to be removed.
+	 * a new (uninstalled) NHLFE has been selected,
+	 * an installed entry that is still selected has a change,
+	 * or an installed entry is to be removed.
 	 */
-	frr_each(nhlfe_list, &lsp->nhlfe_list, nhlfe) {
-		int nh_chg, nh_sel, nh_inst;
+	lsp_nhlfe_list_check(lsp, &lsp->nhlfe_list, &changed);
 
-		nexthop = nhlfe->nexthop;
-		if (!nexthop) // unexpected
-			continue;
-
-		if (!CHECK_FLAG(nhlfe->flags, NHLFE_FLAG_DELETED)
-		    && CHECK_FLAG(nexthop->flags, NEXTHOP_FLAG_ACTIVE)
-		    && (nhlfe->distance == lsp->best_nhlfe->distance)) {
-			SET_FLAG(nhlfe->flags, NHLFE_FLAG_SELECTED);
-			SET_FLAG(nhlfe->flags, NHLFE_FLAG_MULTIPATH);
-			lsp->num_ecmp++;
-		}
-
-		if (CHECK_FLAG(lsp->flags, LSP_FLAG_INSTALLED) && !changed) {
-			nh_chg = CHECK_FLAG(nhlfe->flags, NHLFE_FLAG_CHANGED);
-			nh_sel = CHECK_FLAG(nhlfe->flags, NHLFE_FLAG_SELECTED);
-			nh_inst =
-				CHECK_FLAG(nhlfe->flags, NHLFE_FLAG_INSTALLED);
-
-			if ((nh_sel && !nh_inst)
-			    || (nh_sel && nh_inst && nh_chg)
-			    || (nh_inst && !nh_sel))
-				changed = 1;
-		}
-
-		/* We have finished examining, clear changed flag. */
-		UNSET_FLAG(nhlfe->flags, NHLFE_FLAG_CHANGED);
-	}
+	lsp_nhlfe_list_check(lsp, &lsp->backup_nhlfe_list, &changed);
 
 	if (changed)
 		SET_FLAG(lsp->flags, LSP_FLAG_CHANGED);
