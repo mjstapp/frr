@@ -3940,6 +3940,25 @@ ssize_t netlink_mpls_multipath_msg_encode(int cmd, struct zebra_dplane_ctx *ctx,
 		}
 	}
 
+	/* Must check backups also. */
+	head = dplane_ctx_get_backup_nhlfe_list(ctx);
+	frr_each(nhlfe_list_const, head, nhlfe) {
+		nexthop = nhlfe->nexthop;
+		if (!nexthop)
+			continue;
+		if (cmd == RTM_NEWROUTE) {
+			/* Count all selected NHLFEs */
+			if (CHECK_FLAG(nhlfe->flags, NHLFE_FLAG_SELECTED)
+			    && CHECK_FLAG(nexthop->flags, NEXTHOP_FLAG_ACTIVE))
+				nexthop_num++;
+		} else { /* DEL */
+			/* Count all installed NHLFEs */
+			if (CHECK_FLAG(nhlfe->flags, NHLFE_FLAG_INSTALLED)
+			    && CHECK_FLAG(nexthop->flags, NEXTHOP_FLAG_FIB))
+				nexthop_num++;
+		}
+	}
+
 	if ((nexthop_num == 0) ||
 	    (!dplane_ctx_get_best_nhlfe(ctx) && (cmd != RTM_DELROUTE)))
 		return 0;
@@ -3979,6 +3998,8 @@ ssize_t netlink_mpls_multipath_msg_encode(int cmd, struct zebra_dplane_ctx *ctx,
 				    routedesc);
 
 		nexthop_num = 0;
+
+		head = dplane_ctx_get_nhlfe_list(ctx);
 		frr_each(nhlfe_list_const, head, nhlfe) {
 			nexthop = nhlfe->nexthop;
 			if (!nexthop)
@@ -4003,6 +4024,40 @@ ssize_t netlink_mpls_multipath_msg_encode(int cmd, struct zebra_dplane_ctx *ctx,
 				break;
 			}
 		}
+
+		/* If the valid nhlfe was in the primary list, skip
+		 * looking at the backups.
+		 */
+		if (nexthop_num == 1)
+			goto done;
+
+		/* Check backup nhlfes also - the valid one may be here. */
+		head = dplane_ctx_get_backup_nhlfe_list(ctx);
+		frr_each(nhlfe_list_const, head, nhlfe) {
+			nexthop = nhlfe->nexthop;
+			if (!nexthop)
+				continue;
+
+			if ((cmd == RTM_NEWROUTE
+			     && (CHECK_FLAG(nhlfe->flags, NHLFE_FLAG_SELECTED)
+				 && CHECK_FLAG(nexthop->flags,
+					       NEXTHOP_FLAG_ACTIVE)))
+			    || (cmd == RTM_DELROUTE
+				&& (CHECK_FLAG(nhlfe->flags,
+					       NHLFE_FLAG_INSTALLED)
+				    && CHECK_FLAG(nexthop->flags,
+						  NEXTHOP_FLAG_FIB)))) {
+				/* Add the gateway */
+				if (!_netlink_mpls_build_singlepath(
+					    &p, routedesc, nhlfe, &req->n,
+					    &req->r, buflen, cmd))
+					return false;
+
+				nexthop_num++;
+				break;
+			}
+		}
+
 	} else { /* Multipath case */
 		struct rtattr *nest;
 		const union g_addr *src1 = NULL;
@@ -4016,6 +4071,35 @@ ssize_t netlink_mpls_multipath_msg_encode(int cmd, struct zebra_dplane_ctx *ctx,
 				    routedesc);
 
 		nexthop_num = 0;
+
+		/* Check primary list */
+		head = dplane_ctx_get_nhlfe_list(ctx);
+		frr_each(nhlfe_list_const, head, nhlfe) {
+			nexthop = nhlfe->nexthop;
+			if (!nexthop)
+				continue;
+
+			if ((cmd == RTM_NEWROUTE
+			     && (CHECK_FLAG(nhlfe->flags, NHLFE_FLAG_SELECTED)
+				 && CHECK_FLAG(nexthop->flags,
+					       NEXTHOP_FLAG_ACTIVE)))
+			    || (cmd == RTM_DELROUTE
+				&& (CHECK_FLAG(nhlfe->flags,
+					       NHLFE_FLAG_INSTALLED)
+				    && CHECK_FLAG(nexthop->flags,
+						  NEXTHOP_FLAG_FIB)))) {
+				nexthop_num++;
+
+				/* Build the multipath */
+				if (!_netlink_mpls_build_multipath(
+					    &p, routedesc, nhlfe, &req->n,
+					    buflen, &req->r, &src1))
+					return 0;
+			}
+		}
+
+		/* Check backup list */
+		head = dplane_ctx_get_backup_nhlfe_list(ctx);
 		frr_each(nhlfe_list_const, head, nhlfe) {
 			nexthop = nhlfe->nexthop;
 			if (!nexthop)
@@ -4044,6 +4128,7 @@ ssize_t netlink_mpls_multipath_msg_encode(int cmd, struct zebra_dplane_ctx *ctx,
 		nl_attr_nest_end(&req->n, nest);
 	}
 
+done:
 	return NLMSG_ALIGN(req->n.nlmsg_len);
 }
 
