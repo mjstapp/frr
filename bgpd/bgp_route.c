@@ -10021,9 +10021,16 @@ static int bgp_show_table(struct vty *vty, struct bgp *bgp, safi_t safi,
 				flap_route_vty_out(vty, dest_p, pi, display,
 						   AFI_IP, safi, use_json,
 						   json_paths);
-			else
-				route_vty_out(vty, dest_p, pi, display, safi,
-					      json_paths, wide);
+			else {
+				if (CHECK_FLAG(show_flags, BGP_SHOW_OPT_DETAIL))
+					route_vty_out_detail(
+						vty, bgp, dest, pi,
+						family2afi(dest_p->family),
+						safi, json_paths);
+				else
+					route_vty_out(vty, dest_p, pi, display,
+						      safi, json_paths, wide);
+			}
 			display++;
 		}
 
@@ -11082,7 +11089,7 @@ DEFPY (show_ip_bgp_json,
                      |accept-own|accept-own-nexthop|route-filter-v6\
                      |route-filter-v4|route-filter-translated-v6\
                      |route-filter-translated-v4] [exact-match]\
-          ] [json$uj | wide$wide]",
+          ] [json$uj [detail$detail] | wide$wide]",
        SHOW_STR
        IP_STR
        BGP_STR
@@ -11112,6 +11119,7 @@ DEFPY (show_ip_bgp_json,
        "RT translated VPNv4 route filtering (well-known community)\n"
        "Exact match of the communities\n"
        JSON_STR
+       "Display detailed version of JSON output\n"
        "Increase table width for longer prefixes\n")
 {
 	afi_t afi = AFI_IP6;
@@ -11129,6 +11137,9 @@ DEFPY (show_ip_bgp_json,
 		argc--;
 		SET_FLAG(show_flags, BGP_SHOW_OPT_JSON);
 	}
+
+	if (detail)
+		SET_FLAG(show_flags, BGP_SHOW_OPT_DETAIL);
 
 	/* [<ipv4|ipv6> [all]] */
 	if (all) {
