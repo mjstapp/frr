@@ -1857,7 +1857,7 @@ static bool compare_notif_nhlfes(const struct nhlfe_list_head *ctx_head,
 				continue;
 
 			if ((ctx_nexthop->type == nexthop->type) &&
-			    nexthop_same(ctx_nexthop, nexthop)) {
+			    (nexthop_cmp_basic(ctx_nexthop, nexthop) == 0)) {
 				/* Matched */
 				break;
 			}
@@ -1947,7 +1947,7 @@ static int update_nhlfes_from_ctx(struct nhlfe_list_head *nhlfe_head,
 				continue;
 
 			if ((ctx_nexthop->type == nexthop->type) &&
-			    nexthop_same(ctx_nexthop, nexthop)) {
+			    (nexthop_cmp_basic(ctx_nexthop, nexthop) == 0)) {
 				/* Matched */
 				break;
 			}
