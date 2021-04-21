@@ -1496,7 +1496,7 @@ static bool rib_update_nhg_from_ctx(struct nexthop_group *re_nhg,
 			continue;
 
 		/* Check for a FIB nexthop corresponding to the RIB nexthop */
-		if (!nexthop_same(ctx_nexthop, nexthop)) {
+		if (nexthop_cmp_basic(ctx_nexthop, nexthop) != 0) {
 			/* If the FIB doesn't know about the nexthop,
 			 * it's not installed
 			 */
