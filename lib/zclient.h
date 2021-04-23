@@ -401,6 +401,9 @@ struct zclient {
 #define ZAPI_MESSAGE_TABLEID 0x0100
 #define ZAPI_MESSAGE_SRTE 0x0200
 #define ZAPI_MESSAGE_OPAQUE 0x0400
+/* An RNH/NHT change has happened, according to zebra. */
+#define ZAPI_MESSAGE_RNH_CHANGE 0x0800
+
 
 #define ZSERV_VERSION 6
 /* Zserv protocol message header */

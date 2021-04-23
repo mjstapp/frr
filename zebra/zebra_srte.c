@@ -207,7 +207,8 @@ static void zebra_sr_policy_notify_update(struct zebra_sr_policy *policy)
 		else
 			/* Fallback to the IGP shortest path. */
 			zebra_send_rnh_update(rnh, client, RNH_NEXTHOP_TYPE,
-					      zvrf_id(zvrf), policy->color);
+					      zvrf_id(zvrf), policy->color,
+					      false /*force*/);
 	}
 }
 

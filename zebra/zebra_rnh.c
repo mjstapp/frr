@@ -296,7 +296,7 @@ void zebra_add_rnh_client(struct rnh *rnh, struct zserv *client,
 	 * We always need to respond with known information,
 	 * currently multiple daemons expect this behavior
 	 */
-	zebra_send_rnh_update(rnh, client, type, vrf_id, 0);
+	zebra_send_rnh_update(rnh, client, type, vrf_id, 0, false /*force*/);
 }
 
 void zebra_remove_rnh_client(struct rnh *rnh, struct zserv *client,
@@ -518,7 +518,7 @@ static void zebra_rnh_eval_import_check_entry(struct zebra_vrf *zvrf, afi_t afi,
 		for (ALL_LIST_ELEMENTS_RO(rnh->client_list, node, client)) {
 			zebra_send_rnh_update(rnh, client,
 					      RNH_IMPORT_CHECK_TYPE,
-					      zvrf->vrf->vrf_id, 0);
+					      zvrf->vrf->vrf_id, 0, false);
 		}
 	}
 }
@@ -530,7 +530,8 @@ static void zebra_rnh_notify_protocol_clients(struct zebra_vrf *zvrf, afi_t afi,
 					      struct route_node *nrn,
 					      struct rnh *rnh,
 					      struct route_node *prn,
-					      struct route_entry *re)
+					      struct route_entry *re,
+					      bool changed_p)
 {
 	struct listnode *node;
 	struct zserv *client;
@@ -538,9 +539,10 @@ static void zebra_rnh_notify_protocol_clients(struct zebra_vrf *zvrf, afi_t afi,
 
 	if (IS_ZEBRA_DEBUG_NHT) {
 		if (prn && re) {
-			zlog_debug("%s(%u):%pRN: NH resolved over route %pRN",
+			zlog_debug("%s(%u):%pRN: NH resolved over route %pRN %s",
 				   VRF_LOGNAME(zvrf->vrf), zvrf->vrf->vrf_id,
-				   nrn, prn);
+				   nrn, prn,
+				   (changed_p ? "(changed)" : ""));
 		} else
 			zlog_debug("%s(%u):%pRN: NH has become unresolved",
 				   VRF_LOGNAME(zvrf->vrf), zvrf->vrf->vrf_id,
@@ -581,7 +583,7 @@ static void zebra_rnh_notify_protocol_clients(struct zebra_vrf *zvrf, afi_t afi,
 		}
 
 		zebra_send_rnh_update(rnh, client, RNH_NEXTHOP_TYPE,
-				      zvrf->vrf->vrf_id, 0);
+				      zvrf->vrf->vrf_id, 0, changed_p);
 	}
 
 	if (re)
@@ -780,7 +782,7 @@ static void zebra_rnh_eval_nexthop_entry(struct zebra_vrf *zvrf, afi_t afi,
 					 struct route_node *prn,
 					 struct route_entry *re)
 {
-	int state_changed = 0;
+	bool state_changed = false;
 
 	/* If we're resolving over a different route, resolution has changed or
 	 * the resolving route has some change (e.g., metric), there is a state
@@ -802,10 +804,10 @@ static void zebra_rnh_eval_nexthop_entry(struct zebra_vrf *zvrf, afi_t afi,
 		}
 
 		copy_state(rnh, re, nrn);
-		state_changed = 1;
+		state_changed = true;
 	} else if (compare_state(re, rnh->state)) {
 		copy_state(rnh, re, nrn);
-		state_changed = 1;
+		state_changed = true;
 	}
 	zebra_rnh_store_in_routing_table(rnh);
 
@@ -815,7 +817,7 @@ static void zebra_rnh_eval_nexthop_entry(struct zebra_vrf *zvrf, afi_t afi,
 		 */
 		/* Notify registered protocol clients. */
 		zebra_rnh_notify_protocol_clients(zvrf, afi, nrn, rnh, prn,
-						  rnh->state);
+						  rnh->state, state_changed);
 
 		/* Process pseudowires attached to this nexthop */
 		zebra_rnh_process_pseudowires(zvrf->vrf->vrf_id, rnh);
@@ -1273,7 +1275,7 @@ static bool compare_state(struct route_entry *r1,
 
 int zebra_send_rnh_update(struct rnh *rnh, struct zserv *client,
 			  enum rnh_type type, vrf_id_t vrf_id,
-			  uint32_t srte_color)
+			  uint32_t srte_color, bool change_p)
 {
 	struct stream *s = NULL;
 	struct route_entry *re;
@@ -1297,6 +1299,10 @@ int zebra_send_rnh_update(struct rnh *rnh, struct zserv *client,
 	/* Message flags. */
 	if (srte_color)
 		SET_FLAG(message, ZAPI_MESSAGE_SRTE);
+
+	if (change_p)
+		SET_FLAG(message, ZAPI_MESSAGE_RNH_CHANGE);
+
 	stream_putl(s, message);
 
 	stream_putw(s, rn->p.family);
