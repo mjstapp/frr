@@ -364,6 +364,9 @@ static void bgp_process_nexthop_update(struct bgp_nexthop_cache *bnc,
 	if (nhr->nexthop_num != bnc->nexthop_num)
 		bnc->change_flags |= BGP_NEXTHOP_CHANGED;
 
+	if (CHECK_FLAG(nhr->message, ZAPI_MESSAGE_RNH_CHANGE))
+		bnc->change_flags |= BGP_NEXTHOP_CHANGED;
+
 	if (nhr->nexthop_num) {
 		struct peer *peer = bnc->nht_info;
 
