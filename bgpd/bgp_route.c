@@ -10992,7 +10992,7 @@ DEFPY(show_ip_bgp, show_ip_bgp_cmd,
       "show [ip] bgp [<view|vrf> VIEWVRFNAME] [" BGP_AFI_CMD_STR
       " [" BGP_SAFI_WITH_LABEL_CMD_STR
       "]]\
-          <[all$all] dampening <parameters>\
+          <dampening <parameters>\
            |route-map WORD\
            |prefix-list WORD\
            |filter-list WORD\
@@ -11002,7 +11002,6 @@ DEFPY(show_ip_bgp, show_ip_bgp_cmd,
          >",
       SHOW_STR IP_STR BGP_STR BGP_INSTANCE_HELP_STR BGP_AFI_HELP_STR
 	      BGP_SAFI_WITH_LABEL_HELP_STR
-      "Display the entries for all address families\n"
       "Display detailed information about dampening\n"
       "Display detail of configured dampening parameters\n"
       "Display routes matching the route-map\n"
@@ -11025,17 +11024,6 @@ DEFPY(show_ip_bgp, show_ip_bgp_cmd,
 	int exact_match = 0;
 	struct bgp *bgp = NULL;
 	int idx = 0;
-	uint8_t show_flags = 0;
-
-	/* [<ipv4|ipv6> [all]] */
-	if (all) {
-		SET_FLAG(show_flags, BGP_SHOW_OPT_AFI_ALL);
-		if (argv_find(argv, argc, "ipv4", &idx))
-			SET_FLAG(show_flags, BGP_SHOW_OPT_AFI_IP);
-
-		if (argv_find(argv, argc, "ipv6", &idx))
-			SET_FLAG(show_flags, BGP_SHOW_OPT_AFI_IP6);
-	}
 
 	bgp_vty_find_and_parse_afi_safi_bgp(vty, argv, argc, &idx, &afi, &safi,
 					    &bgp, false);
@@ -11044,8 +11032,7 @@ DEFPY(show_ip_bgp, show_ip_bgp_cmd,
 
 	if (argv_find(argv, argc, "dampening", &idx)) {
 		if (argv_find(argv, argc, "parameters", &idx))
-			return bgp_show_dampening_parameters(vty, afi, safi,
-							     show_flags);
+			return bgp_show_dampening_parameters(vty, afi, safi);
 	}
 
 	if (argv_find(argv, argc, "prefix-list", &idx))
@@ -11081,7 +11068,6 @@ DEFPY(show_ip_bgp, show_ip_bgp_cmd,
 DEFPY (show_ip_bgp_json,
        show_ip_bgp_json_cmd,
        "show [ip] bgp [<view|vrf> VIEWVRFNAME] ["BGP_AFI_CMD_STR" ["BGP_SAFI_WITH_LABEL_CMD_STR"]]\
-          [all$all]\
           [cidr-only\
           |dampening <flap-statistics|dampened-paths>\
           |community [AA:NN|local-AS|no-advertise|no-export\
@@ -11096,7 +11082,6 @@ DEFPY (show_ip_bgp_json,
        BGP_INSTANCE_HELP_STR
        BGP_AFI_HELP_STR
        BGP_SAFI_WITH_LABEL_HELP_STR
-       "Display the entries for all address families\n"
        "Display only routes with non-natural netmasks\n"
        "Display detailed information about dampening\n"
        "Display flap statistics of routes\n"
@@ -11131,7 +11116,7 @@ DEFPY (show_ip_bgp_json,
 	char *community = NULL;
 	bool first = true;
 	uint8_t show_flags = 0;
-
+	bool all = false;
 
 	if (uj) {
 		argc--;
@@ -11140,17 +11125,6 @@ DEFPY (show_ip_bgp_json,
 
 	if (detail)
 		SET_FLAG(show_flags, BGP_SHOW_OPT_DETAIL);
-
-	/* [<ipv4|ipv6> [all]] */
-	if (all) {
-		SET_FLAG(show_flags, BGP_SHOW_OPT_AFI_ALL);
-
-		if (argv_find(argv, argc, "ipv4", &idx))
-			SET_FLAG(show_flags, BGP_SHOW_OPT_AFI_IP);
-
-		if (argv_find(argv, argc, "ipv6", &idx))
-			SET_FLAG(show_flags, BGP_SHOW_OPT_AFI_IP6);
-	}
 
 	if (wide)
 		SET_FLAG(show_flags, BGP_SHOW_OPT_WIDE);
@@ -12704,14 +12678,13 @@ DEFPY (show_ip_bgp_instance_neighbor_bestpath_route,
 
 DEFPY (show_ip_bgp_instance_neighbor_advertised_route,
        show_ip_bgp_instance_neighbor_advertised_route_cmd,
-       "show [ip] bgp [<view|vrf> VIEWVRFNAME] ["BGP_AFI_CMD_STR" ["BGP_SAFI_WITH_LABEL_CMD_STR"]] [all$all] neighbors <A.B.C.D|X:X::X:X|WORD> <advertised-routes|received-routes|filtered-routes> [route-map WORD] [json$uj | wide$wide]",
+       "show [ip] bgp [<view|vrf> VIEWVRFNAME] ["BGP_AFI_CMD_STR" ["BGP_SAFI_WITH_LABEL_CMD_STR"]] neighbors <A.B.C.D|X:X::X:X|WORD> <advertised-routes|received-routes|filtered-routes> [route-map WORD] [json$uj | wide$wide]",
        SHOW_STR
        IP_STR
        BGP_STR
        BGP_INSTANCE_HELP_STR
        BGP_AFI_HELP_STR
        BGP_SAFI_WITH_LABEL_HELP_STR
-       "Display the entries for all address families\n"
        "Detailed information on TCP and BGP neighbor connections\n"
        "Neighbor to display information about\n"
        "Neighbor to display information about\n"
@@ -12734,6 +12707,7 @@ DEFPY (show_ip_bgp_instance_neighbor_advertised_route,
 	int idx = 0;
 	bool first = true;
 	uint8_t show_flags = 0;
+	bool all = false;
 
 	if (uj) {
 		argc--;
