@@ -721,24 +721,23 @@ DEFUN_NOSH (show_debugging_vrrp,
 static int vrrp_config_write_interface(struct vty *vty)
 {
 	struct vrf *vrf;
+	struct interface *ifp;
 	int write = 0;
 
-	RB_FOREACH (vrf, vrf_name_head, &vrfs_by_name) {
-		struct interface *ifp;
+	vrf = vrf_lookup_by_id(VRF_DEFAULT);
 
-		FOR_ALL_INTERFACES (vrf, ifp) {
-			struct lyd_node *dnode;
+	FOR_ALL_INTERFACES (vrf, ifp) {
+		struct lyd_node *dnode;
 
-			dnode = yang_dnode_getf(
-				running_config->dnode,
-				"/frr-interface:lib/interface[name='%s'][vrf='%s']",
-				ifp->name, vrf->name);
-			if (dnode == NULL)
-				continue;
+		dnode = yang_dnode_getf(
+			running_config->dnode,
+			"/frr-interface:lib/interface[name='%s'][vrf='%s']",
+			ifp->name, vrf->name);
+		if (dnode == NULL)
+			continue;
 
-			write = 1;
-			nb_cli_show_dnode_cmds(vty, dnode, false);
-		}
+		write = 1;
+		nb_cli_show_dnode_cmds(vty, dnode, false);
 	}
 
 	return write;

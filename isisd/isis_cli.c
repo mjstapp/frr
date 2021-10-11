@@ -73,12 +73,14 @@ DEFPY_YANG_NOSH(router_isis, router_isis_cmd,
 struct if_iter {
 	struct vty *vty;
 	const char *tag;
+	vrf_id_t vrf_id;
 };
 
 static int if_iter_cb(const struct lyd_node *dnode, void *arg)
 {
 	struct if_iter *iter = arg;
 	const char *tag;
+	struct interface *ifp;
 
 	if (!yang_dnode_exists(dnode, "frr-isisd:isis/area-tag"))
 		return YANG_ITER_CONTINUE;
@@ -88,6 +90,11 @@ static int if_iter_cb(const struct lyd_node *dnode, void *arg)
 		char xpath[XPATH_MAXLEN];
 		const char *name = yang_dnode_get_string(dnode, "name");
 		const char *vrf = yang_dnode_get_string(dnode, "vrf");
+
+		/* Check for vrf match */
+		ifp = if_lookup_by_name_all_vrf(name);
+		if (ifp && ifp->vrf_id != iter->vrf_id)
+			return YANG_ITER_CONTINUE;
 
 		snprintf(
 			xpath, XPATH_MAXLEN,
@@ -106,6 +113,7 @@ DEFPY_YANG(no_router_isis, no_router_isis_cmd,
 	   "ISO Routing area tag\n" VRF_CMD_HELP_STR)
 {
 	struct if_iter iter;
+	struct vrf *vrf;
 
 	if (!vrf_name)
 		vrf_name = VRF_DEFAULT_NAME;
@@ -118,11 +126,20 @@ DEFPY_YANG(no_router_isis, no_router_isis_cmd,
 		return CMD_ERR_NOTHING_TODO;
 	}
 
+	/* Locate vrf id */
+	vrf = vrf_lookup_by_name(vrf_name);
+	if (vrf == NULL) {
+		vty_out(vty, "%% VRF %s not found.\n", vrf_name);
+		return CMD_WARNING_CONFIG_FAILED;
+	}
+
+	iter.vrf_id = vrf->vrf_id;
 	iter.vty = vty;
 	iter.tag = tag;
 
 	yang_dnode_iterate(if_iter_cb, &iter, vty->candidate_config->dnode,
-			   "/frr-interface:lib/interface[vrf='%s']", vrf_name);
+			   "/frr-interface:lib/interface[vrf='%s']",
+			   VRF_DEFAULT_NAME);
 
 	nb_cli_enqueue_change(vty, ".", NB_OP_DESTROY, NULL);
 
@@ -169,6 +186,7 @@ DEFPY_YANG(ip_router_isis, ip_router_isis_cmd,
 	const char *circ_type = NULL;
 	const char *vrf_name;
 	struct interface *ifp;
+	struct vrf *vrf;
 
 	if_dnode = yang_dnode_get(vty->candidate_config->dnode, VTY_CURR_XPATH);
 	if (!if_dnode) {
@@ -176,7 +194,17 @@ DEFPY_YANG(ip_router_isis, ip_router_isis_cmd,
 		return CMD_WARNING_CONFIG_FAILED;
 	}
 
-	vrf_name = yang_dnode_get_string(if_dnode, "vrf");
+	ifp = nb_running_get_entry(NULL, VTY_CURR_XPATH, false);
+	if (ifp == NULL || ifp->vrf_id == VRF_UNKNOWN) {
+		vty_out(vty, "%% Failed to find valid interface\n");
+		return CMD_WARNING_CONFIG_FAILED;
+	}
+
+	vrf = vrf_lookup_by_id(ifp->vrf_id);
+	if (vrf)
+		vrf_name = vrf->name;
+	else
+		vrf_name = VRF_DEFAULT_NAME;
 
 	snprintf(inst_xpath, XPATH_MAXLEN,
 		 "/frr-isisd:isis/instance[area-tag='%s'][vrf='%s']", tag,
@@ -199,7 +227,6 @@ DEFPY_YANG(ip_router_isis, ip_router_isis_cmd,
 				      NB_OP_MODIFY, circ_type);
 
 	/* check if the interface is a loopback and if so set it as passive */
-	ifp = nb_running_get_entry(NULL, VTY_CURR_XPATH, false);
 	if (ifp && if_is_loopback_or_vrf(ifp))
 		nb_cli_enqueue_change(vty, "./frr-isisd:isis/passive",
 				      NB_OP_MODIFY, "true");
@@ -226,6 +253,7 @@ DEFPY_YANG(ip6_router_isis, ip6_router_isis_cmd,
 	const char *circ_type = NULL;
 	const char *vrf_name;
 	struct interface *ifp;
+	struct vrf *vrf;
 
 	if_dnode = yang_dnode_get(vty->candidate_config->dnode, VTY_CURR_XPATH);
 	if (!if_dnode) {
@@ -233,7 +261,17 @@ DEFPY_YANG(ip6_router_isis, ip6_router_isis_cmd,
 		return CMD_WARNING_CONFIG_FAILED;
 	}
 
-	vrf_name = yang_dnode_get_string(if_dnode, "vrf");
+	ifp = nb_running_get_entry(NULL, VTY_CURR_XPATH, false);
+	if (ifp == NULL || ifp->vrf_id == VRF_UNKNOWN) {
+		vty_out(vty, "%% Failed to find valid interface\n");
+		return CMD_WARNING_CONFIG_FAILED;
+	}
+
+	vrf = vrf_lookup_by_id(ifp->vrf_id);
+	if (vrf)
+		vrf_name = vrf->name;
+	else
+		vrf_name = VRF_DEFAULT_NAME;
 
 	snprintf(inst_xpath, XPATH_MAXLEN,
 		 "/frr-isisd:isis/instance[area-tag='%s'][vrf='%s']", tag,
@@ -256,7 +294,6 @@ DEFPY_YANG(ip6_router_isis, ip6_router_isis_cmd,
 				      NB_OP_MODIFY, circ_type);
 
 	/* check if the interface is a loopback and if so set it as passive */
-	ifp = nb_running_get_entry(NULL, VTY_CURR_XPATH, false);
 	if (ifp && if_is_loopback_or_vrf(ifp))
 		nb_cli_enqueue_change(vty, "./frr-isisd:isis/passive",
 				      NB_OP_MODIFY, "true");

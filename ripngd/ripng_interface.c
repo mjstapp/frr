@@ -928,24 +928,23 @@ static int ripng_if_delete_hook(struct interface *ifp)
 static int interface_config_write(struct vty *vty)
 {
 	struct vrf *vrf;
+	struct interface *ifp;
 	int write = 0;
 
-	RB_FOREACH (vrf, vrf_name_head, &vrfs_by_name) {
-		struct interface *ifp;
+	vrf = vrf_lookup_by_id(VRF_DEFAULT);
 
-		FOR_ALL_INTERFACES (vrf, ifp) {
+	FOR_ALL_INTERFACES (vrf, ifp) {
 			struct lyd_node *dnode;
 
 			dnode = yang_dnode_getf(
 				running_config->dnode,
 				"/frr-interface:lib/interface[name='%s'][vrf='%s']",
-				ifp->name, vrf->name);
+				ifp->name, VRF_DEFAULT_NAME);
 			if (dnode == NULL)
 				continue;
 
 			write = 1;
 			nb_cli_show_dnode_cmds(vty, dnode, false);
-		}
 	}
 
 	return write;

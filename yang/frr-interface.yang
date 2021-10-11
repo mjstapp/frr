@@ -48,6 +48,10 @@ module frr-interface {
      (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
      OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.";
 
+  revision 2021-10-08 {
+    description
+      "Remove vrf name dependency";
+  }
   revision 2020-02-05 {
     description
       "Added operational data";

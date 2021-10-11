@@ -255,6 +255,10 @@ void if_update_to_new_vrf(struct interface *ifp, vrf_id_t vrf_id)
 	if (ifp->ifindex != IFINDEX_INTERNAL)
 		IFINDEX_RB_INSERT(vrf, ifp);
 
+#if 0 /* Don't need this terrible hack, since we don't need to key the
+       * interface by vrf name.
+       */
+
 	/*
 	 * HACK: Change the interface VRF in the running configuration directly,
 	 * bypassing the northbound layer. This is necessary to avoid deleting
@@ -284,6 +288,7 @@ void if_update_to_new_vrf(struct interface *ifp, vrf_id_t vrf_id)
 
 		vty_update_xpath(oldpath, newpath);
 	}
+#endif	/* TODO */
 }
 
 
@@ -1196,12 +1201,13 @@ DEFPY_YANG_NOSH (interface,
        VRF_CMD_HELP_STR)
 {
 	char xpath_list[XPATH_MAXLEN];
-	vrf_id_t vrf_id;
+	vrf_id_t vrf_id = VRF_UNKNOWN;
+	struct vrf *vrf;
 	struct interface *ifp;
 	int ret;
 
-	if (!vrf_name)
-		vrf_name = VRF_DEFAULT_NAME;
+	/* TODO -- tolerate vrf name, but ignore it. */
+	vrf_name = VRF_DEFAULT_NAME;
 
 	/*
 	 * This command requires special handling to maintain backward
@@ -1210,11 +1216,12 @@ DEFPY_YANG_NOSH (interface,
 	 * interface is found, then a new one should be created on the default
 	 * VRF.
 	 */
-	VRF_GET_ID(vrf_id, vrf_name, false);
+	vrf = vrf_lookup_by_name(vrf_name);
+	if (vrf)
+		vrf_id = vrf->vrf_id;
+
 	ifp = if_lookup_by_name_all_vrf(ifname);
 	if (ifp && ifp->vrf_id != vrf_id) {
-		struct vrf *vrf;
-
 		/*
 		 * Special case 1: a VRF name was specified, but the found
 		 * interface is associated to different VRF. Reject the command.
@@ -1233,7 +1240,6 @@ DEFPY_YANG_NOSH (interface,
 		vrf = vrf_lookup_by_id(ifp->vrf_id);
 		assert(vrf);
 		vrf_id = ifp->vrf_id;
-		vrf_name = vrf->name;
 	}
 
 	snprintf(xpath_list, sizeof(xpath_list),
@@ -1267,8 +1273,8 @@ DEFPY_YANG (no_interface,
        "Interface's name\n"
        VRF_CMD_HELP_STR)
 {
-	if (!vrf_name)
-		vrf_name = VRF_DEFAULT_NAME;
+	/* TODO -- just use default */
+	vrf_name = VRF_DEFAULT_NAME;
 
 	nb_cli_enqueue_change(vty, ".", NB_OP_DESTROY, NULL);
 
