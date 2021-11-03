@@ -1114,7 +1114,7 @@ static int nl_batch_read_resp(struct nl_batch *bth)
 	int status, seq;
 	const struct nlsock *nl;
 	struct zebra_dplane_ctx *ctx;
-	bool ignore_msg;
+	bool skip_one;
 
 	nl = &(bth->zns->nls);
 
@@ -1126,59 +1126,56 @@ static int nl_batch_read_resp(struct nl_batch *bth)
 	 * message at a time.
 	 */
 	while (true) {
+		skip_one = false;
+
+		ctx = dplane_ctx_dequeue(&(bth->ctx_list));
+		if (ctx == NULL)
+			break;
+
+		dplane_ctx_enqueue_tail(bth->ctx_out_q, ctx);
+
+read_one:
+
 		status = netlink_recv_msg(nl, msg, nl_batch_rx_buf,
 					  sizeof(nl_batch_rx_buf));
 		if (status == -1 || status == 0)
 			return status;
 
 		h = (struct nlmsghdr *)nl_batch_rx_buf;
-		ignore_msg = false;
 		seq = h->nlmsg_seq;
+
 		/*
-		 * Find the corresponding context object. Received responses are
-		 * in the same order as requests we sent, so we can simply
-		 * iterate over the context list and match responses with
-		 * requests at same time.
+		 * Responses are received in the same order as requests we sent,
+		 * so we can simply match responses with requests.
 		 */
-		while (true) {
-			ctx = dplane_ctx_dequeue(&(bth->ctx_list));
-			if (ctx == NULL)
-				break;
 
-			dplane_ctx_enqueue_tail(bth->ctx_out_q, ctx);
-
-			/* We have found corresponding context object. */
-			if (dplane_ctx_get_ns(ctx)->nls.seq == seq)
-				break;
+		/*
+		 * Special case: some updates, for v6 routes e.g., use two
+		 * sequence numbers: one for a delete, and a second for the
+		 * install. In this case, the first response is for seq + 1,
+		 * and it can be ignored.
+		 */
+		if (dplane_ctx_is_update(ctx)
+		    && dplane_ctx_get_ns(ctx)->nls.seq + 1 == seq) {
+			/*
+			 * This is the situation where we get a response
+			 * that should be ignored.
+			 */
+			assert(skip_one == false);
+			skip_one = true;
+			goto read_one;
+		} else if (dplane_ctx_get_ns(ctx)->nls.seq != seq) {
 
 			/*
-			 * 'update' context objects take two consecutive
-			 * sequence numbers.
+			 * If we get here then we did not receive the ack or
+			 * the error and instead received some other message
+			 * in an unexpected way.
 			 */
-			if (dplane_ctx_is_update(ctx)
-			    && dplane_ctx_get_ns(ctx)->nls.seq + 1 == seq) {
-				/*
-				 * This is the situation where we get a response
-				 * to a message that should be ignored.
-				 */
-				ignore_msg = true;
-				break;
-			}
-		}
-
-		if (ignore_msg)
-			continue;
-
-		/*
-		 * We received a message with the sequence number that isn't
-		 * associated with any dplane context object.
-		 */
-		if (ctx == NULL) {
 			if (IS_ZEBRA_DEBUG_KERNEL)
-				zlog_debug(
-					"%s: skipping unassociated response, seq number %d NS %u",
-					__func__, h->nlmsg_seq,
-					bth->zns->ns_id);
+				zlog_debug("%s: ignoring message type 0x%04x(%s) NS %u",
+					   __func__, h->nlmsg_type,
+					   nl_msg_type_to_str(h->nlmsg_type),
+					   bth->zns->ns_id);
 			continue;
 		}
 
@@ -1193,19 +1190,7 @@ static int nl_batch_read_resp(struct nl_batch *bth)
 			if (IS_ZEBRA_DEBUG_KERNEL)
 				zlog_debug("%s: netlink error message seq=%d ",
 					   __func__, h->nlmsg_seq);
-			continue;
 		}
-
-		/*
-		 * If we get here then we did not receive neither the ack nor
-		 * the error and instead received some other message in an
-		 * unexpected way.
-		 */
-		if (IS_ZEBRA_DEBUG_KERNEL)
-			zlog_debug("%s: ignoring message type 0x%04x(%s) NS %u",
-				   __func__, h->nlmsg_type,
-				   nl_msg_type_to_str(h->nlmsg_type),
-				   bth->zns->ns_id);
 	}
 
 	return 0;
