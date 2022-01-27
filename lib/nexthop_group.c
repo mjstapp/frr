@@ -824,7 +824,8 @@ static bool nexthop_group_parse_nexthop(struct nexthop *nhop,
 	if (labels) {
 		mpls_label_t larray[MPLS_MAX_LABELS];
 
-		ret = mpls_str2label(labels, &labelnum, larray);
+		ret = mpls_str2label(labels, MPLS_STR_FLAG_DEFAULT, &labelnum,
+				     larray);
 
 		/* Return label parse result */
 		if (lbl_ret)
@@ -877,7 +878,7 @@ DEFPY(ecmp_nexthops, ecmp_nexthops_cmd,
 	>\
 	[{ \
 	   nexthop-vrf NAME$vrf_name \
-	   |label WORD \
+	   |label WORD [any$any]\
 	   |vni (1-16777215) \
            |weight (1-255) \
            |backup-idx WORD \
@@ -893,6 +894,7 @@ DEFPY(ecmp_nexthops, ecmp_nexthops_cmd,
       "The nexthop-vrf Name\n"
       "Specify label(s) for this nexthop\n"
       "One or more labels in the range (16-1048575) separated by '/'\n"
+      "Allow any label, even reserved labels\n"
       "Specify VNI(s) for this nexthop\n"
       "VNI in the range (1-16777215)\n"
       "Weight to be used by the nexthop for purposes of ECMP\n"

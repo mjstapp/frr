@@ -223,10 +223,15 @@ static inline char *label2str(mpls_label_t label, enum lsp_types_t type,
 }
 
 /*
- * String to label conversion, labels separated by '/'.
+ * String to label conversion, labels separated by '/'. The return values are
+ * complicated - see the implementation.
  */
-int mpls_str2label(const char *label_str, uint8_t *num_labels,
+int mpls_str2label(const char *label_str, int flags, uint8_t *num_labels,
 		   mpls_label_t *labels);
+
+/* Flags for string conversion */
+#define MPLS_STR_FLAG_DEFAULT      0x00
+#define MPLS_STR_FLAG_UNRESERVED   0x01
 
 /* Generic string buffer for label-stack-to-str */
 #define MPLS_LABEL_STRLEN 1024
@@ -236,6 +241,9 @@ int mpls_str2label(const char *label_str, uint8_t *num_labels,
  */
 char *mpls_label2str(uint8_t num_labels, const mpls_label_t *labels, char *buf,
 		     int len, enum lsp_types_t type, int pretty);
+
+/* Return 'true' if any label in 'labels' is reserved (or out of range). */
+bool mpls_labels_reserved(const mpls_label_t *labels, uint8_t num);
 
 #ifdef __cplusplus
 }

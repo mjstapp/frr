@@ -1443,6 +1443,32 @@ DEFPY (tc_filter_rate,
 	return CMD_SUCCESS;
 }
 
+DEFPY(sharp_install_fec_v4,
+      sharp_install_fec_v4_cmd,
+      "sharp install fec prefix A.B.C.D/M$pfx label (0-100000)$inlabel",
+      "Sharp Routing Protocol\n"
+      "Install data\n"
+      "Install a Forwarding Equivalent\n"
+      "Specify an IPv4 prefix\n"
+      "The IPv4 prefix\n"
+      "Specify the ingress label\n"
+      "The ingress label\n")
+{
+	struct prefix p = {};
+
+	/* Convert from v4-specific to generic prefix struct */
+	p.family = pfx->family;
+	p.prefixlen = pfx->prefixlen;
+	p.u.prefix4 = pfx->prefix;
+
+	if (sharp_install_fec_helper(&p, inlabel))
+		return CMD_SUCCESS;
+	else {
+		vty_out(vty, "%% Failed to install FEC\n");
+		return CMD_WARNING;
+	}
+}
+
 void sharp_vty_init(void)
 {
 	install_element(ENABLE_NODE, &install_routes_data_dump_cmd);
@@ -1481,6 +1507,8 @@ void sharp_vty_init(void)
 	install_element(ENABLE_NODE, &no_sharp_interface_protodown_cmd);
 
 	install_element(ENABLE_NODE, &tc_filter_rate_cmd);
+
+	install_element(ENABLE_NODE, &sharp_install_fec_v4_cmd);
 
 	return;
 }

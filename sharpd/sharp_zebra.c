@@ -1101,6 +1101,28 @@ void sharp_zebra_register_neigh(vrf_id_t vrf_id, afi_t afi, bool reg)
 	zclient_register_neigh(zclient, vrf_id, afi, reg);
 }
 
+/*
+ * Register an MPLS FEC (prefix)
+ */
+bool sharp_install_fec_helper(const struct prefix *p, uint32_t label)
+{
+	struct stream *s;
+
+	s = zclient->obuf;
+	stream_reset(s);
+
+	zclient_create_header(s, ZEBRA_FEC_REGISTER, VRF_DEFAULT);
+	stream_putw(s, ZEBRA_FEC_REGISTER_LABEL);
+	stream_putw(s, PREFIX_FAMILY(p));
+	stream_put_prefix(s, p);
+	stream_putl(s, label);
+
+	stream_putw_at(s, 0, stream_get_endp(s));
+
+	zclient_send_message(zclient);
+
+	return true;
+}
 
 static zclient_handler *const sharp_handlers[] = {
 	[ZEBRA_INTERFACE_ADDRESS_ADD] = interface_address_add,

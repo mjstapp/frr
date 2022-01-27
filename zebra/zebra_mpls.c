@@ -441,7 +441,8 @@ static int fec_change_update_lsp(struct zebra_vrf *zvrf, struct zebra_fec *fec,
 			break;
 	}
 
-	if (!re || !zebra_rib_labeled_unicast(re)) {
+//	if (!re || !zebra_rib_labeled_unicast(re)) {
+	if (!re) {
 		if (uninstall)
 			lsp_uninstall(zvrf, fec->label);
 		return 0;
