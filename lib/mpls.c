@@ -21,7 +21,7 @@
  *         -2 if a label was inside the reserved range (0-15)
  *         -3 if the number of labels given exceeds MPLS_MAX_LABELS
  */
-int mpls_str2label(const char *label_str, uint8_t *num_labels,
+int mpls_str2label(const char *label_str, int flags, uint8_t *num_labels,
 		   mpls_label_t *labels)
 {
 	char *ostr;			  // copy of label string (start)
@@ -44,8 +44,11 @@ int mpls_str2label(const char *label_str, uint8_t *num_labels,
 		/* format check */
 		if (*endp != '\0')
 			rc = -1;
-		/* validity check */
-		else if (!IS_MPLS_UNRESERVED_LABEL(pl[i]))
+		/* validity checks */
+		else if (CHECK_FLAG(flags, MPLS_STR_FLAG_UNRESERVED)) {
+			if (!IS_MPLS_UNRESERVED_LABEL(pl[i]))
+				rc = -2;
+		} else if (pl[i] > MPLS_LABEL_UNRESERVED_MAX)
 			rc = -2;
 	}
 
@@ -89,4 +92,20 @@ char *mpls_label2str(uint8_t num_labels, const mpls_label_t *labels, char *buf,
 	}
 
 	return buf;
+}
+
+/*
+ * Return 'true' if any label in 'labels' is reserved (or out of range).
+ */
+bool mpls_labels_reserved(const mpls_label_t *labels, uint8_t num)
+{
+	uint8_t i;
+
+	for (i = 0; i < num; i++) {
+		if (labels[i] < MPLS_LABEL_UNRESERVED_MIN ||
+		    labels[i] > MPLS_LABEL_UNRESERVED_MAX)
+			return true;
+	}
+
+	return false;
 }

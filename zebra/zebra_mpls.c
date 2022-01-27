@@ -416,7 +416,8 @@ static int fec_change_update_lsp(struct zebra_vrf *zvrf, struct zebra_fec *fec,
 			break;
 	}
 
-	if (!re || !zebra_rib_labeled_unicast(re))
+//	if (!re || !zebra_rib_labeled_unicast(re))
+	if (!re)
 		return 0;
 
 	if (lsp_install(zvrf, fec->label, rn, re))
