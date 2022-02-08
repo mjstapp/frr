@@ -2284,8 +2284,11 @@ static int nexthop_active(struct nexthop *nexthop, struct nhg_hash_entry *nhe,
 			continue;
 		}
 
-		if ((match->type == ZEBRA_ROUTE_CONNECT) ||
+		if (RIB_TYPE_RESOLVED(match->type) ||
 		    (RIB_SYSTEM_ROUTE(match) && RSYSTEM_ROUTE(type))) {
+			/* Valid resolving route type for non-recursive
+			 * routes.
+			 */
 			match = zebra_nhg_connected_ifindex(rn, match,
 							    nexthop->ifindex);
 
