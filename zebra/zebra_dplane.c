@@ -376,6 +376,8 @@ struct zebra_dplane_ctx {
  */
 #define DPLANE_CTX_FLAG_NO_KERNEL 0x01
 
+/* No kernel/OS nhg */
+#define DPLANE_CTX_FLAG_NO_NHG    0x02
 
 /*
  * Registration block for one dataplane provider.
@@ -909,6 +911,21 @@ bool dplane_ctx_is_skip_kernel(const struct zebra_dplane_ctx *ctx)
 	DPLANE_CTX_VALID(ctx);
 
 	return CHECK_FLAG(ctx->zd_flags, DPLANE_CTX_FLAG_NO_KERNEL);
+}
+
+/* Control use of NHGs for a ctx */
+void dplane_ctx_set_no_nhg(struct zebra_dplane_ctx *ctx)
+{
+	DPLANE_CTX_VALID(ctx);
+
+	SET_FLAG(ctx->zd_flags, DPLANE_CTX_FLAG_NO_NHG);
+}
+
+bool dplane_ctx_is_no_nhg(const struct zebra_dplane_ctx *ctx)
+{
+	DPLANE_CTX_VALID(ctx);
+
+	return CHECK_FLAG(ctx->zd_flags, DPLANE_CTX_FLAG_NO_NHG);
 }
 
 void dplane_ctx_set_op(struct zebra_dplane_ctx *ctx, enum dplane_op_e op)
@@ -2427,6 +2444,20 @@ static int dplane_ctx_ns_init(struct zebra_dplane_ctx *ctx,
 }
 
 /*
+ * Helper to determine whether a route should use OS NHGs (if available).
+ */
+static bool route_use_kernel_nhg(const struct route_entry *re)
+{
+	if (CHECK_FLAG(re->status, ROUTE_ENTRY_NO_NHG))
+		return false;
+
+	if (zebra_nhg_kernel_nexthops_enabled())
+		return true;
+
+	return false;
+}
+
+/*
  * Initialize a context block for a route update from zebra data structs.
  */
 int dplane_ctx_route_init(struct zebra_dplane_ctx *ctx, enum dplane_op_e op,
@@ -2544,6 +2575,9 @@ int dplane_ctx_route_init(struct zebra_dplane_ctx *ctx, enum dplane_op_e op,
 	zns = zvrf->zns;
 	dplane_ctx_ns_init(ctx, zns, (op == DPLANE_OP_ROUTE_UPDATE));
 
+	if (CHECK_FLAG(re->status, ROUTE_ENTRY_NO_NHG))
+		SET_FLAG(ctx->zd_flags, DPLANE_CTX_FLAG_NO_NHG);
+
 #ifdef HAVE_NETLINK
 	{
 		struct nhg_hash_entry *nhe = zebra_nhg_resolve(re->nhe);
@@ -2557,7 +2591,7 @@ int dplane_ctx_route_init(struct zebra_dplane_ctx *ctx, enum dplane_op_e op,
 		 * If its a delete we only use the prefix anyway, so this only
 		 * matters for INSTALL/UPDATE.
 		 */
-		if (zebra_nhg_kernel_nexthops_enabled()
+		if (route_use_kernel_nhg(re)
 		    && (((op == DPLANE_OP_ROUTE_INSTALL)
 			 || (op == DPLANE_OP_ROUTE_UPDATE))
 			&& !CHECK_FLAG(nhe->flags, NEXTHOP_GROUP_INSTALLED)

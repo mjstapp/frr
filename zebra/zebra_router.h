@@ -211,6 +211,9 @@ struct zebra_router {
 	bool notify_on_ack;
 
 	bool supports_nhgs;
+
+	/* Allow NHGs for routes on GRE links */
+	bool gre_use_nhg;
 };
 
 #define GRACEFUL_RESTART_TIME 60
