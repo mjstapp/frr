@@ -471,6 +471,11 @@ int routing_control_plane_protocols_control_plane_protocol_staticd_route_list_cr
 		vrf = nb_running_get_entry(vrf_dnode, NULL, true);
 		s_vrf = vrf->info;
 
+		zlog_debug("route_list_create cb: vrf %p %s(%u)%s, info %p",
+			   vrf, vrf->name, vrf->vrf_id,
+			   vrf_is_user_cfged(vrf) ? " (C)" : "",
+			   vrf->info);
+
 		yang_dnode_get_prefix(&prefix, args->dnode, "./prefix");
 		afi_safi = yang_dnode_get_string(args->dnode, "./afi-safi");
 		yang_afi_safi_identity2value(afi_safi, &afi, &safi);

@@ -70,11 +70,19 @@ static int static_vrf_new(struct vrf *vrf)
 	vrf->info = svrf;
 	svrf->vrf = vrf;
 
+	zlog_debug("%s: vrf %p%s %s:%u, info %p", __func__, vrf,
+		   vrf_is_user_cfged(vrf) ? " (C)" : "",
+		   vrf->name, vrf->vrf_id, vrf->info);
+
 	return 0;
 }
 
 static int static_vrf_enable(struct vrf *vrf)
 {
+	zlog_debug("%s: vrf %p%s %s:%u, info %p", __func__, vrf,
+		   vrf_is_user_cfged(vrf) ? " (C)" : "",
+		   vrf->name, vrf->vrf_id, vrf->info);
+
 	static_zebra_vrf_register(vrf);
 
 	static_fixup_vrf_ids(vrf->info);
@@ -84,6 +92,10 @@ static int static_vrf_enable(struct vrf *vrf)
 
 static int static_vrf_disable(struct vrf *vrf)
 {
+	zlog_debug("%s: vrf %p%s %s:%u, info %p", __func__, vrf,
+		   vrf_is_user_cfged(vrf) ? " (C)" : "",
+		   vrf->name, vrf->vrf_id, vrf->info);
+
 	static_zebra_vrf_unregister(vrf);
 	return 0;
 }
@@ -95,6 +107,10 @@ static int static_vrf_delete(struct vrf *vrf)
 	safi_t safi;
 	afi_t afi;
 	void *info;
+
+	zlog_debug("%s: vrf %p%s %s:%u, info %p", __func__, vrf,
+		   vrf_is_user_cfged(vrf) ? " (C)" : "",
+		   vrf->name, vrf->vrf_id, vrf->info);
 
 	svrf = vrf->info;
 	for (afi = AFI_IP; afi <= AFI_IP6; afi++) {

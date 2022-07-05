@@ -157,8 +157,8 @@ struct vrf *vrf_get(vrf_id_t vrf_id, const char *name)
 		new = 1;
 
 		if (debug_vrf)
-			zlog_debug("VRF(%u) %s is created.", vrf_id,
-				   (name) ? name : "(NULL)");
+			zlog_debug("VRF(%u) %s is created: %p", vrf_id,
+				   (name) ? name : "(NULL)", vrf);
 	}
 
 	/* Set identifier */
@@ -238,8 +238,9 @@ struct vrf *vrf_update(vrf_id_t new_vrf_id, const char *name)
 void vrf_delete(struct vrf *vrf)
 {
 	if (debug_vrf)
-		zlog_debug("VRF %s(%u) is to be deleted.", vrf->name,
-			   vrf->vrf_id);
+		zlog_debug("VRF %p%s %s(%u) is to be deleted.", vrf,
+			   vrf_is_user_cfged(vrf) ? " (C)" : "",
+			   vrf->name, vrf->vrf_id);
 
 	if (vrf_is_enabled(vrf))
 		vrf_disable(vrf);
@@ -292,7 +293,7 @@ int vrf_enable(struct vrf *vrf)
 		return 1;
 
 	if (debug_vrf)
-		zlog_debug("VRF %s(%u) is enabled.", vrf->name, vrf->vrf_id);
+		zlog_debug("VRF %p %s(%u) is enabled.", vrf, vrf->name, vrf->vrf_id);
 
 	SET_FLAG(vrf->status, VRF_ACTIVE);
 
@@ -322,7 +323,7 @@ void vrf_disable(struct vrf *vrf)
 	UNSET_FLAG(vrf->status, VRF_ACTIVE);
 
 	if (debug_vrf)
-		zlog_debug("VRF %s(%u) is to be disabled.", vrf->name,
+		zlog_debug("VRF %p %s(%u) is to be disabled.", vrf, vrf->name,
 			   vrf->vrf_id);
 
 	/* Till now, nothing to be done for the default VRF. */
@@ -913,6 +914,10 @@ static int lib_vrf_create(struct nb_cb_create_args *args)
 
 	vrfp = vrf_get(VRF_UNKNOWN, vrfname);
 
+	if (debug_vrf)
+		zlog_debug("%s: vrf %p, %s:%u", __func__, vrfp,
+			   vrfname, vrfp->vrf_id);
+
 	SET_FLAG(vrfp->status, VRF_CONFIGURED);
 	nb_running_set_entry(args->dnode, vrfp);
 
@@ -937,6 +942,10 @@ static int lib_vrf_destroy(struct nb_cb_destroy_args *args)
 		break;
 	case NB_EV_APPLY:
 		vrfp = nb_running_unset_entry(args->dnode);
+
+		if (debug_vrf)
+			zlog_debug("%s: vrf %p, %s:%u", __func__, vrfp,
+				   vrfp->name, vrfp->vrf_id);
 
 		/* Clear configured flag and invoke delete. */
 		UNSET_FLAG(vrfp->status, VRF_CONFIGURED);

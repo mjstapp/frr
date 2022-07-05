@@ -481,14 +481,18 @@ static void static_ifindex_update_af(struct interface *ifp, bool up, afi_t afi,
  * afi -> The afi to look at
  * safi -> the safi to look at
  */
-static void static_fixup_vrf(struct static_vrf *svrf,
-			     struct route_table *stable, afi_t afi, safi_t safi)
+static int static_fixup_vrf(struct static_vrf *svrf,
+			    struct route_table *stable, afi_t afi, safi_t safi)
 {
 	struct route_node *rn;
 	struct static_nexthop *nh;
 	struct interface *ifp;
 	struct static_path *pn;
 	struct static_route_info *si;
+	int counter = 0;
+
+	zlog_debug("%s: vrf %p %s:%u, svrf %p", __func__, svrf->vrf,
+		   svrf->vrf->name, svrf->vrf->vrf_id, svrf);
 
 	for (rn = route_top(stable); rn; rn = route_next(rn)) {
 		si = static_route_info_from_rnode(rn);
@@ -512,9 +516,12 @@ static void static_fixup_vrf(struct static_vrf *svrf,
 				}
 
 				static_install_path(pn);
+				counter++;
 			}
 		}
 	}
+
+	return counter;
 }
 
 /*
@@ -526,15 +533,19 @@ static void static_fixup_vrf(struct static_vrf *svrf,
  * afi -> the afi in question
  * safi -> the safi in question
  */
-static void static_enable_vrf(struct static_vrf *svrf,
-			      struct route_table *stable, afi_t afi,
-			      safi_t safi)
+static int static_enable_vrf(struct static_vrf *svrf,
+			     struct route_table *stable, afi_t afi,
+			     safi_t safi)
 {
 	struct route_node *rn;
 	struct static_nexthop *nh;
 	struct interface *ifp;
 	struct static_path *pn;
 	struct static_route_info *si;
+	int counter = 0;
+
+	zlog_debug("%s: vrf %p %s:%u, svrf %p", __func__, svrf->vrf,
+		   svrf->vrf->name, svrf->vrf->vrf_id, svrf);
 
 	for (rn = route_top(stable); rn; rn = route_next(rn)) {
 		si = static_route_info_from_rnode(rn);
@@ -553,9 +564,12 @@ static void static_enable_vrf(struct static_vrf *svrf,
 				if (nh->nh_vrf_id == VRF_UNKNOWN)
 					continue;
 				static_install_path(pn);
+				counter++;
 			}
 		}
 	}
+
+	return counter;
 }
 
 /*
@@ -571,6 +585,11 @@ void static_fixup_vrf_ids(struct static_vrf *enable_svrf)
 	struct vrf *vrf;
 	afi_t afi;
 	safi_t safi;
+	int counter = 0;
+
+	zlog_debug("%s: vrf %p %s:%u, svrf %p", __func__, enable_svrf->vrf,
+		   enable_svrf->vrf->name, enable_svrf->vrf->vrf_id,
+		   enable_svrf);
 
 	RB_FOREACH (vrf, vrf_name_head, &vrfs_by_name) {
 		struct static_vrf *svrf;
@@ -582,11 +601,19 @@ void static_fixup_vrf_ids(struct static_vrf *enable_svrf)
 			if (!stable)
 				continue;
 
-			static_fixup_vrf(enable_svrf, stable, afi, safi);
+			counter += static_fixup_vrf(enable_svrf, stable, afi,
+						    safi);
 
 			if (enable_svrf == svrf)
-				static_enable_vrf(svrf, stable, afi, safi);
+				counter += static_enable_vrf(svrf, stable, afi,
+							     safi);
 		}
+	}
+
+
+	zlog_debug("%s: ends, counter %d", __func__, counter);
+	if (counter > 0) {
+//		SET_FLAG(enable_svrf->vrf->status, VRF_CONFIGURED);
 	}
 }
 

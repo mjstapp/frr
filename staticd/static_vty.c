@@ -1004,10 +1004,14 @@ void static_cli_show(struct vty *vty, const struct lyd_node *dnode,
 		     bool show_defaults)
 {
 	const char *vrf;
+	struct vrf *vrfp;
 
 	vrf = yang_dnode_get_string(dnode, "../vrf");
+	vrfp = vrf_lookup_by_name(vrf);
 	if (strcmp(vrf, VRF_DEFAULT_NAME))
-		vty_out(vty, "vrf %s\n", vrf);
+		vty_out(vty, "vrf %s %p%s, info %p\n", vrf, vrfp,
+			vrf_is_user_cfged(vrfp) ? " (C)" : "",
+			vrfp->info);
 }
 
 void static_cli_show_end(struct vty *vty, const struct lyd_node *dnode)
