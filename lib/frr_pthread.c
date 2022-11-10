@@ -155,6 +155,10 @@ static void *frr_pthread_inner(void *arg)
 	struct frr_pthread *fpt = arg;
 
 	rcu_thread_start(fpt->rcu_thread);
+
+	/* TODO */
+	zlog_debug("%s: pthread %s", __func__, fpt->name);
+
 	return fpt->attr.start(fpt);
 }
 

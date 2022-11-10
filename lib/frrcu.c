@@ -53,6 +53,7 @@
 #include "frrcu.h"
 #include "seqlock.h"
 #include "atomlist.h"
+#include "lib/zlog.h"
 
 DEFINE_MTYPE_STATIC(LIB, RCU_THREAD,    "RCU thread");
 DEFINE_MTYPE_STATIC(LIB, RCU_NEXT,      "RCU sequence barrier");
@@ -66,6 +67,8 @@ struct rcu_thread {
 	struct rcu_head rcu_head;
 
 	struct seqlock rcu;
+
+	pthread_t tid;
 
 	/* only accessed by thread itself, not atomic */
 	unsigned depth;
@@ -127,6 +130,9 @@ static bool rcu_active;
 static void rcu_start(void);
 static void rcu_bump(void);
 
+/* Debug enabled */
+static bool g_rcu_debug;
+
 /*
  * preinitialization for main thread
  */
@@ -139,6 +145,8 @@ static void rcu_preinit(void)
 
 	rt = &rcu_thread_main;
 	rt->depth = 1;
+	rt->tid = pthread_self();
+
 	seqlock_init(&rt->rcu);
 	seqlock_acquire_val(&rt->rcu, SEQLOCK_STARTVAL);
 
@@ -153,6 +161,35 @@ static void rcu_preinit(void)
 
 	seqlock_init(&rcu_seq);
 	seqlock_acquire_val(&rcu_seq, SEQLOCK_STARTVAL);
+}
+
+/*
+ *
+ */
+static const char *rcu_action2str(const struct rcu_action *action)
+{
+	switch (action->type) {
+		case RCUA_INVALID:
+			return "INVALID";
+			break;
+		case RCUA_NEXT:
+			return "NEXT";
+			break;
+		case RCUA_END:
+			return "END";
+			break;
+		case RCUA_FREE:
+			return "FREE";
+			break;
+		case RCUA_CLOSE:
+			return "CLOSE";
+			break;
+		case RCUA_CALL:
+			return "CALL";
+			break;
+		default:
+			return "UNKNOWN";
+	}
 }
 
 static struct rcu_thread *rcu_self(void)
@@ -193,6 +230,10 @@ struct rcu_thread *rcu_thread_prepare(void)
 void rcu_thread_start(struct rcu_thread *rt)
 {
 	pthread_setspecific(rcu_thread_key, rt);
+	rt->tid = pthread_self();
+
+	/* TODO */
+	zlog_debug("%s: rt %p, tid %p", __func__, rt, (void *)(rt->tid));
 }
 
 void rcu_thread_unprepare(struct rcu_thread *rt)
@@ -374,6 +415,11 @@ static void rcu_do(struct rcu_head *rh)
 	struct rcu_head_close *rhc;
 	void *p;
 
+	/* TODO */
+	zlog_debug("%s: tid %p, action %s",
+		   __func__, (void *)(uintptr_t)pthread_self(),
+		   rcu_action2str(rh->action));
+
 	switch (rh->action->type) {
 	case RCUA_FREE:
 		p = (char *)rh - rh->action->u.free.offset;
@@ -412,6 +458,8 @@ static void rcu_watchdog(struct rcu_thread *rt)
 	 */
 	fprintf(stderr, "RCU watchdog %p\n", rt);
 #endif
+
+	zlog_debug("%s: rt %p, tid %p", __func__, rt, (void *)(rt->tid));
 }
 
 static void *rcu_main(void *arg)
@@ -426,6 +474,9 @@ static void *rcu_main(void *arg)
 	pthread_setspecific(rcu_thread_key, &rcu_thread_rcu);
 
 	while (!end) {
+		zlog_debug("%s: tid %p waiting for rcuval %u",
+			   __func__, (void *)(uintptr_t)pthread_self(), rcuval);
+
 		seqlock_wait(&rcu_seq, rcuval);
 
 		/* RCU watchdog timeout, TODO: configurable value */
@@ -436,11 +487,16 @@ static void *rcu_main(void *arg)
 			maxwait.tv_nsec -= 1000000000;
 		}
 
-		frr_each (rcu_threads, &rcu_threads, rt)
+		frr_each (rcu_threads, &rcu_threads, rt) {
+			zlog_debug("%s: waiting for rt %p, tid %p, cur %u",
+				   __func__, rt, (void *)(rt->tid),
+				   seqlock_cur(&rt->rcu));
+
 			if (!seqlock_timedwait(&rt->rcu, rcuval, &maxwait)) {
 				rcu_watchdog(rt);
 				seqlock_wait(&rt->rcu, rcuval);
 			}
+		}
 
 		while ((rh = rcu_heads_pop(&rcu_heads))) {
 			if (rh->action->type == RCUA_NEXT)
@@ -516,6 +572,10 @@ void rcu_enqueue(struct rcu_head *rh, const struct rcu_action *action)
 		return;
 	}
 	rcu_heads_add_tail(&rcu_heads, rh);
+
+	zlog_debug("%s: tid %p, dirty => %u", __func__,
+		   (void *)(uintptr_t)(pthread_self()), seqlock_cur(&rcu_seq));
+
 	atomic_store_explicit(&rcu_dirty, seqlock_cur(&rcu_seq),
 			      memory_order_relaxed);
 }
@@ -524,4 +584,12 @@ void rcu_close(struct rcu_head_close *rhc, int fd)
 {
 	rhc->fd = fd;
 	rcu_enqueue(&rhc->rcu_head, &rcua_close);
+}
+
+/*
+ * Control internal debugs
+ */
+void rcu_set_debug(bool set_p)
+{
+	g_rcu_debug = set_p;
 }

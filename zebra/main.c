@@ -132,6 +132,8 @@ static void sighup(void)
 	;
 }
 
+static void ztest_stop(void);
+
 /* SIGINT handler. */
 static void sigint(void)
 {
@@ -155,6 +157,9 @@ static void sigint(void)
 	rtadv_stop_ra_all();
 
 	frr_early_fini();
+
+	/* TODO */
+	ztest_stop();
 
 	/* Stop the opaque module pthread */
 	zebra_opaque_stop();
@@ -238,6 +243,80 @@ void zebra_finalize(struct thread *dummy)
 static void sigusr1(void)
 {
 	zlog_rotate();
+}
+
+/*
+ * TODO TODO
+ */
+static volatile bool ztest_running;
+static volatile bool ztest_quit;
+static struct rcu_thread *ztest_rcu_thread;
+static pthread_t ztest_pthread;
+
+/* pthread function */
+static void *ztest_func(void *arg)
+{
+	struct timespec ts, ts_left;
+
+	ztest_running = true;
+
+	rcu_thread_start(ztest_rcu_thread);
+
+	/* Release the initial lock */
+	rcu_read_unlock();
+
+	/* Log, just to try it out */
+	zlog_debug("%s: after the read_unlock() call", __func__);
+
+	while (!ztest_quit) {
+		ts.tv_sec = 0;
+		ts.tv_nsec = 300 * 1000 * 1000; /* 300 msecs */
+
+		nanosleep(&ts, &ts_left);
+	}
+
+	ztest_running = false;
+
+	return NULL;
+}
+
+
+static void ztest_stop(void)
+{
+	struct timespec ts, ts_left;
+
+	ztest_quit = true;
+
+	while (ztest_running) {
+		ts.tv_sec = 0;
+		ts.tv_nsec = 100 * 1000 * 1000; /* 100 msecs */
+
+		nanosleep(&ts, &ts_left);
+	}
+}
+
+static void ztest_start(void)
+{
+	sigset_t oldsigs, blocksigs;
+
+	/* Init rcu block */
+	ztest_rcu_thread = rcu_thread_prepare();
+
+	/* ensure we never handle signals on the test pthread by blocking
+	 * everything here (new pthread inherits signal mask)
+	 */
+	sigfillset(&blocksigs);
+	pthread_sigmask(SIG_BLOCK, &blocksigs, &oldsigs);
+
+	/* Start pthread */
+	assert(pthread_create(&ztest_pthread, NULL, ztest_func, NULL) == 0);
+
+	pthread_sigmask(SIG_SETMASK, &oldsigs, NULL);
+
+	pthread_setname_np(ztest_pthread, "ZTEST");
+
+	zlog_debug("%s: rt %p, tid %p", __func__, ztest_rcu_thread,
+		   (void *)(uintptr_t)ztest_pthread);
 }
 
 struct frr_signal_t zebra_signals[] = {
@@ -393,6 +472,9 @@ int main(int argc, char **argv)
 		}
 	}
 
+	/* TODO */
+	rcu_set_debug(true);
+
 	zrouter.master = frr_init();
 
 	/* Zebra related initialize. */
@@ -424,6 +506,9 @@ int main(int argc, char **argv)
 	zebra_srte_init();
 	zebra_srv6_init();
 	zebra_srv6_vty_init();
+
+	/* TODO */
+	ztest_start();
 
 	/* For debug purpose. */
 	/* SET_FLAG (zebra_debug_event, ZEBRA_DEBUG_EVENT); */

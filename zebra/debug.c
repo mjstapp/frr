@@ -42,6 +42,7 @@ unsigned long zebra_debug_nexthop;
 unsigned long zebra_debug_evpn_mh;
 unsigned long zebra_debug_pbr;
 unsigned long zebra_debug_neigh;
+int zebra_debug_rcu;
 
 DEFINE_HOOK(zebra_debug_show_debugging, (struct vty *vty), (vty));
 
@@ -133,6 +134,12 @@ DEFUN_NOSH (show_debugging_zebra,
 
 	if (IS_ZEBRA_DEBUG_PBR)
 		vty_out(vty, "  Zebra PBR debugging is on\n");
+
+	if (IS_ZEBRA_DEBUG_NEIGH)
+		vty_out(vty, "  Zebra neigh events debugging is on\n");
+
+	if (IS_ZEBRA_DEBUG_RCU)
+		vty_out(vty, "  Zebra RCU debugging is on\n");
 
 	hook_call(zebra_debug_show_debugging, vty);
 
@@ -612,6 +619,23 @@ DEFPY (debug_zebra_nexthop,
 	return CMD_SUCCESS;
 }
 
+DEFPY (debug_zebra_rcu, debug_zebra_rcu_cmd,
+       "[no$no] debug zebra rcu",
+       NO_STR
+       DEBUG_STR
+       "Zebra configuration\n"
+       "Debug RCU lib module\n")
+{
+	rcu_set_debug(!!no);
+
+	if (no)
+		UNSET_FLAG(zebra_debug_rcu, ZEBRA_DEBUG_RCU);
+	else
+		SET_FLAG(zebra_debug_rcu, ZEBRA_DEBUG_RCU);
+
+	return CMD_SUCCESS;
+}
+
 /* Debug node. */
 static int config_write_debug(struct vty *vty);
 struct cmd_node debug_node = {
@@ -754,6 +778,11 @@ static int config_write_debug(struct vty *vty)
 		write++;
 	}
 
+	if (IS_ZEBRA_DEBUG_RCU) {
+		vty_out(vty, "debug zebra rcu\n");
+		write++;
+	}
+
 	return write;
 }
 
@@ -775,6 +804,7 @@ void zebra_debug_init(void)
 	zebra_debug_nexthop = 0;
 	zebra_debug_pbr = 0;
 	zebra_debug_neigh = 0;
+	zebra_debug_rcu = 0;
 
 	install_node(&debug_node);
 
@@ -812,6 +842,7 @@ void zebra_debug_init(void)
 	install_element(ENABLE_NODE, &no_debug_zebra_dplane_cmd);
 	install_element(ENABLE_NODE, &no_debug_zebra_pbr_cmd);
 	install_element(ENABLE_NODE, &debug_zebra_evpn_mh_cmd);
+	install_element(ENABLE_NODE, &debug_zebra_rcu_cmd);
 
 	install_element(CONFIG_NODE, &debug_zebra_events_cmd);
 	install_element(CONFIG_NODE, &debug_zebra_nht_cmd);
@@ -846,4 +877,5 @@ void zebra_debug_init(void)
 	install_element(CONFIG_NODE, &no_debug_zebra_pbr_cmd);
 	install_element(CONFIG_NODE, &debug_zebra_mlag_cmd);
 	install_element(CONFIG_NODE, &debug_zebra_evpn_mh_cmd);
+	install_element(CONFIG_NODE, &debug_zebra_rcu_cmd);
 }

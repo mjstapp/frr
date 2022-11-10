@@ -176,6 +176,9 @@ extern void rcu_enqueue(struct rcu_head *head, const struct rcu_action *action);
 
 extern void rcu_close(struct rcu_head_close *head, int fd);
 
+/* Control internal debugs */
+void rcu_set_debug(bool set_p);
+
 #ifdef __cplusplus
 }
 #endif

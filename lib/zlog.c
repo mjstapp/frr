@@ -92,7 +92,8 @@ static struct zlog_targets_head zlog_targets;
 /* Global setting for buffered vs immediate output. The default is
  * per-pthread buffering.
  */
-static bool default_immediate;
+/* TODO -- reset */
+static bool default_immediate = true;
 
 /* cf. zlog.h for additional comments on this struct.
  *
