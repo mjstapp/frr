@@ -115,6 +115,11 @@ void vzlogx(const struct xref_logmsg *xref, int prio,
 	fputs("\n", stderr);
 }
 
+void zlog_backtrace(int prio)
+{
+	return;
+}
+
 void memory_oom(size_t size, const char *name)
 {
 	abort();

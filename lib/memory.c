@@ -43,6 +43,12 @@ static inline void mt_count_alloc(struct memtype *mt, size_t size, void *ptr)
 	size_t current;
 	size_t oldsize;
 
+	if (CHECK_FLAG(mt->flags, MTYPE_FLAG_TRACE)) {
+		zlog_info("%s: mtype %s, n_alloc %d", __func__,
+			  mt->name, (int)mt->n_alloc);
+		zlog_backtrace(LOG_INFO);
+	}
+
 	current = 1 + atomic_fetch_add_explicit(&mt->n_alloc, 1,
 						memory_order_relaxed);
 
@@ -80,6 +86,13 @@ static inline void mt_count_alloc(struct memtype *mt, size_t size, void *ptr)
 static inline void mt_count_free(struct memtype *mt, void *ptr)
 {
 	frrtrace(2, frr_libfrr, memfree, mt, ptr);
+
+	/* TODO */
+	if (CHECK_FLAG(mt->flags, MTYPE_FLAG_TRACE)) {
+		zlog_info("%s: mtype %s, n_alloc %d", __func__,
+			  mt->name, (int)mt->n_alloc);
+		zlog_backtrace(LOG_INFO);
+	}
 
 	assert(mt->n_alloc);
 	atomic_fetch_sub_explicit(&mt->n_alloc, 1, memory_order_relaxed);

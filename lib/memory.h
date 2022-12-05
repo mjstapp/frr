@@ -36,6 +36,7 @@ extern "C" {
 struct memtype {
 	struct memtype *next, **ref;
 	const char *name;
+	int flags;
 	atomic_size_t n_alloc;
 	atomic_size_t n_max;
 	atomic_size_t size;
@@ -44,6 +45,9 @@ struct memtype {
 	atomic_size_t max_size;
 #endif
 };
+
+/* memtype flags */
+#define MTYPE_FLAG_TRACE  0x01
 
 struct memgroup {
 	struct memgroup *next, **ref;
@@ -119,6 +123,7 @@ struct memgroup {
 	attr struct memtype MTYPE_##mname[1]                                   \
 		__attribute__((section(".data.mtypes"))) = { {                 \
 			.name = desc,                                          \
+			.flags = 0,                                            \
 			.next = NULL,                                          \
 			.n_alloc = 0,                                          \
 			.size = 0,                                             \
@@ -180,6 +185,15 @@ extern void qfree(struct memtype *mt, void *ptr) __attribute__((nonnull(1)));
 static inline size_t mtype_stats_alloc(struct memtype *mt)
 {
 	return mt->n_alloc;
+}
+
+/* Enable / disable trace output for a memtype */
+static inline void mtype_trace_enable(struct memtype *mt, bool enable)
+{
+	if (enable)
+		mt->flags |= MTYPE_FLAG_TRACE;
+	else
+		mt->flags &= ~MTYPE_FLAG_TRACE;
 }
 
 /* NB: calls are ordered by memgroup; and there is a call with mt == NULL for
