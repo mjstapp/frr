@@ -19,7 +19,7 @@
  */
 
 #include "lib/zebra.h"
-#include "lib/thread.h"
+#include "lib/frrevent.h"
 #include "lib/typesafe.h"
 #include "lib/vty.h"
 #include "lib/zclient.h"
@@ -80,10 +80,10 @@ static struct nt_globals {
 	bool enabled_p;
 
 	/* Periodic timer event */
-	struct thread *t_periodic_timer;
+	struct event *t_periodic_timer;
 
 	/* Hold-down timer event */
-	struct thread *t_hold_timer;
+	struct event *t_hold_timer;
 
 	/* Delay before installing entry */
 	time_t hold_secs;
@@ -111,8 +111,8 @@ static struct nt_globals {
 } nt_globals;
 
 /* Prototypes. */
-static void nt_handle_timer(struct thread *event);
-static void nt_handle_hold_timer(struct thread *event);
+static void nt_handle_timer(struct event *event);
+static void nt_handle_hold_timer(struct event *event);
 static void nt_install_entry(struct nt_entry *entry);
 
 /*
@@ -270,7 +270,7 @@ static void clear_all_entries(bool uninstall_p)
 static void nt_resched_timer(uint32_t timeout)
 {
 	if (timeout > 0)
-		thread_add_timer(zrouter.master, nt_handle_timer, NULL, timeout,
+		event_add_timer(zrouter.master, nt_handle_timer, NULL, timeout,
 				 &nt_globals.t_periodic_timer);
 }
 
@@ -280,7 +280,7 @@ static void nt_resched_timer(uint32_t timeout)
 static void nt_resched_hold_timer(uint32_t timeout)
 {
 	if (timeout > 0)
-		thread_add_timer(zrouter.master, nt_handle_hold_timer, NULL,
+		event_add_timer(zrouter.master, nt_handle_hold_timer, NULL,
 				 timeout, &nt_globals.t_hold_timer);
 }
 
@@ -288,7 +288,7 @@ static void nt_resched_hold_timer(uint32_t timeout)
  * Periodic hold-down timer handler; check for entries
  * that should be installed.
  */
-static void nt_handle_hold_timer(struct thread *event)
+static void nt_handle_hold_timer(struct event *event)
 {
 	struct nt_entry *entry;
 	time_t now;
@@ -327,7 +327,7 @@ static void nt_handle_hold_timer(struct thread *event)
 /*
  * Periodic timer handler; check for expired entries.
  */
-static void nt_handle_timer(struct thread *event)
+static void nt_handle_timer(struct event *event)
 {
 	struct nt_entry *entry;
 	time_t now, resched = 0;
@@ -513,7 +513,7 @@ int zebra_neigh_throttle_delete(vrf_id_t vrfid, const struct ipaddr *addr)
 
 	/* If no entries, stop the timer */
 	if (nt_entry_list_const_first(&nt_globals.entry_list) == NULL)
-		thread_cancel(&nt_globals.t_periodic_timer);
+		event_cancel(&nt_globals.t_periodic_timer);
 
 	return 0;
 }
@@ -533,10 +533,10 @@ int zebra_neigh_throttle_delete_all(void)
 
 	/* Stop the timers */
 	if (nt_entry_list_const_first(&nt_globals.entry_list) == NULL)
-		thread_cancel(&nt_globals.t_periodic_timer);
+		event_cancel(&nt_globals.t_periodic_timer);
 
 	if (nt_entry_list_const_first(&nt_globals.hold_list) == NULL)
-		thread_cancel(&nt_globals.t_hold_timer);
+		event_cancel(&nt_globals.t_hold_timer);
 
 	return 0;
 }
@@ -588,10 +588,10 @@ void zebra_neigh_throttle_set_timeout(uint32_t timeout, bool reset)
 
 	/* Reset timer event */
 	if (nt_globals.t_periodic_timer) {
-		if ((uint32_t)thread_timer_remain_second(
+		if ((uint32_t)event_timer_remain_second(
 			    nt_globals.t_periodic_timer) >
 		    (uint32_t)nt_globals.timeout_secs)
-			thread_cancel(&nt_globals.t_periodic_timer);
+			event_cancel(&nt_globals.t_periodic_timer);
 	}
 
 	/* Start the timer if necessary: not previously running, or shortened
@@ -678,8 +678,8 @@ void zebra_neigh_throttle_fini(void)
 		zlog_debug("%s: called", __func__);
 
 	/* Cancel timer */
-	thread_cancel(&nt_globals.t_periodic_timer);
-	thread_cancel(&nt_globals.t_hold_timer);
+	event_cancel(&nt_globals.t_periodic_timer);
+	event_cancel(&nt_globals.t_hold_timer);
 
 	/* Empty/free any existing entries - don't need to explicitly
 	 * uninstall, zebra rib code will do this for us.
