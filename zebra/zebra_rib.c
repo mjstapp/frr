@@ -178,6 +178,9 @@ static const struct {
 			      META_QUEUE_OTHER},
 	[ZEBRA_ROUTE_ALL] = {ZEBRA_ROUTE_ALL, ZEBRA_MAX_DISTANCE_DEFAULT,
 			     META_QUEUE_OTHER},
+	[ZEBRA_ROUTE_ADJACENCY] = {ZEBRA_ROUTE_ADJACENCY, 0,
+				   META_QUEUE_CONNECTED},
+
 	/* Any new route type added to zebra, should be mirrored here */
 
 	/* no entry/default: 150 */
