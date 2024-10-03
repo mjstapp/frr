@@ -6233,6 +6233,10 @@ next_dest:
 		if (!bgp_clearing_batch_check_peer(cinfo, pi->peer))
 			continue;
 
+		/* TODO -- remove debug */
+		zlog_debug("%s: dest %pRN: found peer %pBP", __func__, dest->rn,
+			   pi->peer);
+
 		/* graceful restart STALE flag set. */
 		if (((CHECK_FLAG(pi->peer->sflags, PEER_STATUS_NSF_WAIT)
 		      && pi->peer->nsf[afi][safi])
