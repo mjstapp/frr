@@ -1364,6 +1364,10 @@ enum bgp_fsm_state_progress bgp_stop(struct peer *peer)
 
 	peer->nsf_af_count = 0;
 
+	/* TODO */
+	if (bgp_debug_neighbor_events(peer))
+		zlog_debug("%s: peer %pBP", __func__, peer);
+
 	/* deregister peer */
 	if (peer->bfd_config
 	    && peer->last_reset == PEER_DOWN_UPDATE_SOURCE_CHANGE)

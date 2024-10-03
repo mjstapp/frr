@@ -8679,6 +8679,18 @@ static void bgp_process_conn_error(struct thread *thread)
 	size_t list_count = 0;
 	bool more_p = false;
 
+	/* TODO -- testing: wait a bit once, to collect multiple errors */
+	struct timespec ts;
+	static bool bwait = true;
+	if (bwait) {
+		ts.tv_sec = 0;
+		ts.tv_nsec = 100 * 1000 * 1000; /* 100 ms */
+
+		nanosleep(&ts, NULL);
+		bwait = false;
+	}
+	/* TODO -- */
+
 	bgp = THREAD_ARG(thread);
 
 	frr_with_mutex (&bgp->peer_errs_mtx) {
