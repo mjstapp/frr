@@ -730,7 +730,6 @@ void if_delete_update(struct interface **pifp)
 	   for setting ifindex to IFINDEX_INTERNAL after processing the
 	   interface deletion message. */
 	if_set_index(ifp, IFINDEX_INTERNAL);
-	ifp->node = NULL;
 
 	UNSET_FLAG(ifp->status, ZEBRA_INTERFACE_VRF_LOOPBACK);
 
