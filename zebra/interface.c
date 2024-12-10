@@ -3959,50 +3959,6 @@ void if_ipv6_address_uninstall(struct interface *ifp, struct prefix *prefix)
 	UNSET_FLAG(ifc->conf, ZEBRA_IFC_QUEUED);
 }
 
-DEFPY (intf_neigh_throttle,
-       intf_neigh_throttle_cmd,
-       "[no] neighbor throttle <enable$enable_p | disable$disable_p>",
-       NO_STR
-       "Neighbor commands\n"
-       "Neighbor throttling\n"
-       "Enable for this interface\n"
-       "Disable for this interface\n")
-{
-	struct zebra_if *zif;
-
-	VTY_DECLVAR_CONTEXT(interface, ifp);
-
-	zif = ifp->info;
-
-	/* Manage per-interface config */
-	if (enable_p) {
-		if (no)
-			UNSET_FLAG(zif->flags, ZIF_FLAG_NEIGH_THROTTLE);
-		else if (!CHECK_FLAG(zif->flags,
-				     ZIF_FLAG_NEIGH_THROTTLE_DISABLE))
-			SET_FLAG(zif->flags, ZIF_FLAG_NEIGH_THROTTLE);
-		else {
-			/* Invalid */
-			vty_out(vty,
-				"%% Invalid: 'enable' and 'disable' are exclusive\n");
-			return CMD_WARNING_CONFIG_FAILED;
-		}
-	} else if (disable_p) {
-		if (no)
-			UNSET_FLAG(zif->flags, ZIF_FLAG_NEIGH_THROTTLE_DISABLE);
-		else if (!CHECK_FLAG(zif->flags, ZIF_FLAG_NEIGH_THROTTLE))
-			SET_FLAG(zif->flags, ZIF_FLAG_NEIGH_THROTTLE_DISABLE);
-		else {
-			/* Invalid */
-			vty_out(vty,
-				"%% Invalid: 'enable' and 'disable' are exclusive\n");
-			return CMD_WARNING_CONFIG_FAILED;
-		}
-	}
-
-	return CMD_SUCCESS;
-}
-
 /* Allocate and initialize interface vector. */
 void zebra_if_init(void)
 {
@@ -4017,6 +3973,4 @@ void zebra_if_init(void)
 
 	install_element(ENABLE_NODE, &show_interface_desc_cmd);
 	install_element(ENABLE_NODE, &show_interface_desc_vrf_all_cmd);
-
-	install_element(INTERFACE_NODE, &intf_neigh_throttle_cmd);
 }
