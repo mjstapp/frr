@@ -2166,7 +2166,8 @@ bool soo_in_ecom(struct ecommunity *ecom, struct ecommunity *soo)
 /*
  * Return data from ecom at index 'idx', or NULL
  */
-const uint8_t *ecommunity_idx(const struct ecommunity *ecom, uint32_t idx)
+const struct ecommunity_val *ecommunity_idx(const struct ecommunity *ecom,
+					    uint32_t idx)
 {
 	const uint8_t *ptr = NULL;
 
@@ -2179,5 +2180,5 @@ const uint8_t *ecommunity_idx(const struct ecommunity *ecom, uint32_t idx)
 	ptr = ecom->val + (ecom->unit_size * idx);
 
 done:
-	return ptr;
+	return (struct ecommunity_val *)ptr;
 }

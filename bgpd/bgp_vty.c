@@ -1008,6 +1008,9 @@ int bgp_vty_return(struct vty *vty, enum bgp_create_error_code ret)
 	case BGP_ERR_INVALID_INTERNAL_ROLE:
 		str = "External roles can be set only on eBGP session";
 		break;
+	case BGP_ERR_INVALID_RTC_INSTANCE:
+		str = "RTC SAFI is only available in the default instance";
+		break;
 	}
 	if (str) {
 		vty_out(vty, "%% %s\n", str);
@@ -16228,6 +16231,9 @@ CPP_NOTICE("Remove `gracefulRestartCapability` JSON field")
 	if (p->bfd_config)
 		bgp_bfd_show_info(vty, p, json_neigh);
 
+	/* RTC route-target constraint */
+	bgp_rtc_show_peer(p, vty, json_neigh);
+
 	if (use_json) {
 		if (p->conf_if) /* Configured interface name. */
 			json_object_object_add(json, p->conf_if, json_neigh);
@@ -21765,6 +21771,9 @@ void bgp_vty_init(void)
 	install_element(BGP_IPV6L_NODE, &neighbor_default_originate_cmd);
 	install_element(BGP_IPV6L_NODE, &neighbor_default_originate_rmap_cmd);
 	install_element(BGP_IPV6L_NODE, &no_neighbor_default_originate_cmd);
+	install_element(BGP_RTC_NODE, &neighbor_default_originate_cmd);
+	install_element(BGP_RTC_NODE, &neighbor_default_originate_rmap_cmd);
+	install_element(BGP_RTC_NODE, &no_neighbor_default_originate_cmd);
 
 	/* "neighbor port" commands. */
 	install_element(BGP_NODE, &neighbor_port_cmd);
