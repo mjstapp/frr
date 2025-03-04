@@ -1541,7 +1541,7 @@ bool ecommunity_include(struct ecommunity *e1, struct ecommunity *e2)
 /*
  * See whether 'e1' contains the value 'val'
  */
-bool ecommunity_include_val(const struct ecommunity *e1, const uint8_t *val)
+bool ecommunity_includes_val(const struct ecommunity *e1, const uint8_t *val)
 {
 	uint32_t i;
 
