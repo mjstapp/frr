@@ -42,6 +42,7 @@
 #include "bgpd/bgp_io.h"
 #include "bgpd/bgp_zebra.h"
 #include "bgpd/bgp_vty.h"
+#include "bgpd/bgp_rtc.h"
 
 DEFINE_HOOK(peer_backward_transition, (struct peer * peer), (peer));
 DEFINE_HOOK(peer_status_changed, (struct peer * peer), (peer));
@@ -1510,6 +1511,9 @@ enum bgp_fsm_state_progress bgp_stop(struct peer_connection *connection)
 	event_cancel(&connection->t_routeadv);
 	event_cancel(&connection->t_delayopen);
 
+	/* Finish with any RTC features */
+	bgp_rtc_peer_delete(peer);
+
 	/* Clear input and output buffer.  */
 	frr_with_mutex (&connection->io_mtx) {
 		if (connection->ibuf)
@@ -2326,6 +2330,11 @@ bgp_establish(struct peer_connection *connection)
 				SET_FLAG(peer->af_sflags[afi][safi],
 					 PEER_STATUS_ORF_WAIT_REFRESH);
 	}
+
+	/* If RTC feature was negotiated, defer VPN SAFIs until RTC SAFI is
+	 * announced.
+	 */
+	bgp_rtc_handle_establish(peer);
 
 	bgp_announce_peer(peer);
 
