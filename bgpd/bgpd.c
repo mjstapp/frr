@@ -4012,7 +4012,6 @@ int bgp_delete(struct bgp *bgp)
 	uint32_t a_ann_cnt = 0, a_l2_cnt = 0, a_l3_cnt = 0;
 	struct bgp *bgp_to_proc = NULL;
 	struct bgp *bgp_to_proc_next = NULL;
-	uint32_t cnt_before, cnt_after;
 	struct bgp_clearing_info *cinfo;
 	struct peer_connection *connection;
 
@@ -8630,6 +8629,11 @@ void bgp_master_init(struct event_loop *master, const int buffer_size,
 	bm->t_bgp_zebra_l2_vni = NULL;
 	bm->t_bgp_zebra_l3_vni = NULL;
 
+	bm->peer_clearing_batch_id = 1;
+	/* TODO -- make these configurable */
+	bm->peer_conn_errs_dequeue_limit = BGP_CONN_ERROR_DEQUEUE_MAX;
+	bm->peer_clearing_batch_max_dests = BGP_CLEARING_BATCH_MAX_DESTS;
+
 	bgp_mac_init();
 	/* init the rd id space.
 	   assign 0th index in the bitfield,
@@ -9028,6 +9032,7 @@ static void bgp_clearing_batch_begin(struct bgp *bgp)
 	cinfo = XCALLOC(MTYPE_CLEARING_BATCH, sizeof(struct bgp_clearing_info));
 
 	cinfo->bgp = bgp;
+	cinfo->id = bm->peer_clearing_batch_id++;
 
 	/* Init hash of peers and list of dests */
 	bgp_clearing_hash_init(&cinfo->peers);
@@ -9063,15 +9068,10 @@ static void bgp_clearing_batch_end(struct bgp *bgp)
 	/* Do a RIB walk for the current batch. If it finds dests/prefixes
 	 * to work on, this will schedule a task to process
 	 * the dests/prefixes in the batch.
+	 * NB this will free the batch if it finishes, or if there was no work
+	 * to do.
 	 */
 	bgp_clear_route_batch(cinfo);
-
-	/* If we found no prefixes/dests, just discard the batch,
-	 * remembering that we're holding a ref for each peer.
-	 */
-	if (bgp_clearing_destlist_count(&cinfo->destlist) == 0) {
-		bgp_clearing_batch_completed(cinfo);
-	}
 }
 
 /* Check whether a dest's peer is relevant to a clearing batch */
@@ -9174,6 +9174,10 @@ bool bgp_clearing_batch_add_peer(struct bgp *bgp, struct peer *peer)
 
 			bgp_clearing_hash_add(&cinfo->peers, peer);
 			SET_FLAG(peer->flags, PEER_FLAG_CLEARING_BATCH);
+
+			if (bgp_debug_neighbor_events(peer))
+				zlog_debug("%s: peer %pBP batched in %#x", __func__,
+					   peer, cinfo->id);
 		}
 		return true;
 	}
@@ -9186,19 +9190,26 @@ bool bgp_clearing_batch_add_peer(struct bgp *bgp, struct peer *peer)
  * encountered in the io pthread. We avoid having the io pthread try
  * to enqueue fsm events or mess with the peer struct.
  */
-
-/* TODO -- should this be configurable? */
-/* Max number of peers to process without rescheduling */
-#define BGP_CONN_ERROR_DEQUEUE_MAX 10
-
 static void bgp_process_conn_error(struct event *event)
 {
 	struct bgp *bgp;
 	struct peer *peer;
 	struct peer_connection *connection;
-	int counter = 0;
+	uint32_t counter = 0;
 	size_t list_count = 0;
 	bool more_p = false;
+
+	/* TODO -- testing: wait a bit once, to collect multiple errors */
+	struct timespec ts;
+	static bool bwait = true;
+	if (bwait) {
+		ts.tv_sec = 0;
+		ts.tv_nsec = 100 * 1000 * 1000; /* 100 ms */
+
+		nanosleep(&ts, NULL);
+		bwait = false;
+	}
+	/* TODO -- */
 
 	bgp = EVENT_ARG(event);
 
@@ -9243,7 +9254,7 @@ static void bgp_process_conn_error(struct event *event)
 		bgp_event_update(connection, connection->connection_errcode);
 
 		counter++;
-		if (counter >= BGP_CONN_ERROR_DEQUEUE_MAX)
+		if (counter >= bm->peer_conn_errs_dequeue_limit)
 			break;
 
 		connection = bgp_dequeue_conn_err(bgp, &more_p);
