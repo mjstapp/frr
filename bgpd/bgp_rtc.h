@@ -33,10 +33,12 @@ int bgp_rtc_peer_update(struct peer *peer, afi_t afi, safi_t safi, bool active);
 struct ecommunity_val; /* Forward ref */
 int bgp_rtc_import_change(struct bgp *bgp, const struct ecommunity_val *eval,
 			  bool add_p);
-/* RTC prefix advertisement update */
-int bgp_rtc_prefix_update(struct bgp_dest *dest,
-			  const struct bgp_path_info *oldpi,
-			  const struct bgp_path_info *newpi);
+/* RTC prefix advertisement update: direct ibgp peer, or "best" */
+int bgp_rtc_dest_update(struct bgp_dest *dest,
+			const struct bgp_path_info *oldpi,
+			const struct bgp_path_info *newpi);
+int bgp_rtc_prefix_update(const struct prefix *p, struct peer *peer,
+			  bool update_p);
 /* Special handling for peer advertising the RTC default prefix */
 int bgp_rtc_default_update(struct peer *peer, const struct prefix *p,
 			   bool add_p);
