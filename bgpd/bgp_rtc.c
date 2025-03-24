@@ -626,65 +626,30 @@ static void rtc_handle_peer_filter_del(struct peer *peer,
 }
 
 /*
- * Handler for RTC SAFI prefix updates
+ * Handler for RTC SAFI prefix updates, called directly for ibgp peers
  */
-int bgp_rtc_prefix_update(struct bgp_dest *dest,
-			  const struct bgp_path_info *oldpi,
-			  const struct bgp_path_info *newpi)
+int bgp_rtc_prefix_update(const struct prefix *p, struct peer *peer,
+			  bool update_p)
 {
 	int ret = 0;
 	struct peer_rtc_entry lookup = {};
 	struct peer_rtc_entry *rtc = NULL;
 	char buf[PREFIX_STRLEN] = "\0";
 	bool debug_p = false;
-	struct peer *old_peer = NULL, *new_peer = NULL;
-	const struct prefix *p;
-
-	if (oldpi)
-		old_peer = oldpi->peer;
-	if (newpi)
-		new_peer = newpi->peer;
-
-	/* Don't have any special handling for updates */
-	if ((oldpi == newpi) || (old_peer == new_peer))
-		goto done;
 
 	/* Prepare filter lookup */
-	p = bgp_dest_get_prefix(dest);
-
 	lookup.p.family = AF_RTC;
 	lookup.p.prefixlen = p->prefixlen;
 	lookup.p.prefix = p->u.prefix_rtc;
 
-	if ((old_peer && bgp_debug_update(old_peer, NULL, NULL, 1)) ||
-	    (new_peer && bgp_debug_update(new_peer, NULL, NULL, 1))) {
+	if (bgp_debug_update(peer, NULL, NULL, 1)) {
 		debug_p = true;
 		prefix_rtc2str(&(lookup.p), buf, sizeof(buf));
 	}
 
-	if (old_peer) {
-		/* Remove from peer's filters */
-		rtc = rtc_filter_find(&old_peer->rtc_filter, &lookup);
-		if (rtc) {
-			if (debug_p)
-				zlog_debug("%s: %pBP: del filter %s", __func__,
-					   old_peer, buf);
-
-			rtc_filter_del(&old_peer->rtc_filter, rtc);
-			XFREE(MTYPE_BGP_RTC, rtc);
-
-			/* Removing an RT filter: if this was the only prefix
-			 * allowing an RT, need to re-scan the rib-out
-			 * for this peer and possibly withdraw some routes
-			 * in the VPN SAFIs.
-			 */
-			rtc_handle_peer_filter_del(old_peer, &lookup);
-		}
-	}
-
-	if (new_peer) {
+	if (update_p) {
 		/* Add to peer's filters */
-		rtc = rtc_filter_find(&new_peer->rtc_filter, &lookup);
+		rtc = rtc_filter_find(&peer->rtc_filter, &lookup);
 		if (rtc == NULL) {
 			/* Adding an RT filter: may need to re-scan
 			 * VPN routes and possibly advertise
@@ -698,14 +663,72 @@ int bgp_rtc_prefix_update(struct bgp_dest *dest,
 
 			if (debug_p)
 				zlog_debug("%s: %pBP: add filter %s", __func__,
-					   new_peer, buf);
+					   peer, buf);
 
-			rtc_filter_add(&new_peer->rtc_filter, rtc);
+			rtc_filter_add(&peer->rtc_filter, rtc);
 
 			/* Currently handling after the new filter exists */
-			rtc_handle_peer_filter_add(new_peer, &lookup);
+			rtc_handle_peer_filter_add(peer, &lookup);
+		}
+	} else {
+		/* Remove from peer's filters */
+		rtc = rtc_filter_find(&peer->rtc_filter, &lookup);
+		if (rtc) {
+			if (debug_p)
+				zlog_debug("%s: %pBP: del filter %s", __func__,
+					   peer, buf);
+
+			rtc_filter_del(&peer->rtc_filter, rtc);
+			XFREE(MTYPE_BGP_RTC, rtc);
+
+			/* Removing an RT filter: if this was the only prefix
+			 * allowing an RT, need to re-scan the rib-out
+			 * for this peer and possibly withdraw some routes
+			 * in the VPN SAFIs.
+			 */
+			rtc_handle_peer_filter_del(peer, &lookup);
 		}
 	}
+
+	return ret;
+}
+
+/*
+ * Handler for RTC SAFI ebgp "best" dest updates; ibgp updates are handled
+ * directly as updates are parsed
+ */
+int bgp_rtc_dest_update(struct bgp_dest *dest,
+			const struct bgp_path_info *oldpi,
+			const struct bgp_path_info *newpi)
+{
+	int ret = 0;
+	struct peer *old_peer = NULL, *new_peer = NULL;
+	const struct prefix *p;
+
+	if (oldpi)
+		old_peer = oldpi->peer;
+	if (newpi)
+		new_peer = newpi->peer;
+
+	/* Don't have any special handling for updates */
+	if ((oldpi == newpi) || (old_peer == new_peer))
+		goto done;
+
+	if (bgp_debug_update(old_peer, NULL, NULL, 1) ||
+	    bgp_debug_update(new_peer, NULL, NULL, 1))
+		zlog_debug("%s: %pBD, old_peer %pBP, new_peer %pBP", __func__,
+			   dest, old_peer, new_peer);
+
+	/* Prepare filter lookup */
+	p = bgp_dest_get_prefix(dest);
+
+	if (old_peer && (old_peer->sort != BGP_PEER_IBGP))
+		/* Remove from peer's filters */
+		ret = bgp_rtc_prefix_update(p, old_peer, false);
+
+	if (new_peer && (new_peer->sort != BGP_PEER_IBGP))
+		/* Add to peer's filters */
+		ret = bgp_rtc_prefix_update(p, new_peer, true);
 
 done:
 	return ret;

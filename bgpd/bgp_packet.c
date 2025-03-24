@@ -386,10 +386,17 @@ parse_done:
 			bgp_withdraw(peer, &p, 0, packet->afi, packet->safi,
 				     ZEBRA_ROUTE_BGP, BGP_ROUTE_NORMAL, NULL,
 				     NULL, 0);
+
+			/* Handle ibgp directly */
+			if (peer->sort == BGP_PEER_IBGP)
+				bgp_rtc_prefix_update(&p, peer, false);
 		} else {
 			bgp_update(peer, &p, 0, attr, packet->afi, packet->safi,
 				   ZEBRA_ROUTE_BGP, BGP_ROUTE_NORMAL, NULL,
 				   NULL, 0, 0, NULL);
+			/* Handle ibgp directly */
+			if (peer->sort == BGP_PEER_IBGP)
+				bgp_rtc_prefix_update(&p, peer, true);
 		}
 	}
 

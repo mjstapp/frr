@@ -3882,9 +3882,9 @@ static void bgp_process_main_one(struct bgp *bgp, struct bgp_dest *dest,
 			__func__, dest, bgp->name_pretty, afi2str(afi),
 			safi2str(safi), old_select, new_select);
 
-	/* Handle RTC prefix-filters for peers */
+	/* Handle RTC prefix-filters for ebgp peers */
 	if (afi == AFI_IP && safi == SAFI_RTC)
-		bgp_rtc_prefix_update(dest, old_select, new_select);
+		bgp_rtc_dest_update(dest, old_select, new_select);
 
 	/* If best route remains the same and this is not due to user-initiated
 	 * clear, see exactly what needs to be done.
