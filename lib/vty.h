@@ -45,6 +45,13 @@ struct vty_cfg_change {
 
 PREDECL_DLIST(vtys);
 
+/* Data for yield/resume of large show outputs */
+struct vty_yield_resume_s {
+	void *arg;
+	void (*app_cb)(struct vty *vty, void *arg);
+	struct event *t_resume;
+};
+
 /* VTY struct. */
 struct vty {
 	struct vtys_item itm;
@@ -232,6 +239,9 @@ struct vty {
 
 	int buf_size_set;
 	uint64_t buf_size_intermediate;
+
+	/* Data for yield/resume of large show outputs */
+	struct vty_yield_resume_s yield_resume;
 };
 
 static inline void vty_push_context(struct vty *vty, int node, uint64_t id)
@@ -437,6 +447,25 @@ static inline bool vty_needs_implicit_commit(struct vty *vty)
 {
 	return frr_get_cli_mode() == FRR_CLI_CLASSIC && !vty->pending_allowed;
 }
+
+/*
+ * Application process wants to yield while sending results/replies.
+ * We'll schedule a task to resume, and call the application's callback
+ * with the 'vty' and its 'arg'. We won't restart reads on the vty until
+ * the application tells us to.
+ * If the vty is being closed or deleted, we'll call the callback with a NULL
+ * 'vty', so the application can clean up, free memory, if necessary.
+ */
+bool vty_yield(struct vty *vty, void (*func)(struct vty *vty, void *arg),
+	       void *arg);
+
+/*
+ * Yield/resume is complete; cancel any scheduled resume task, and return
+ * to normal vty operation (turn on reads, e.g.)
+ * Called from the application, so we expect the application to have
+ * cleaned-up any context, memory, etc.
+ */
+void vty_yield_finish(struct vty *vty);
 
 #ifdef __cplusplus
 }
