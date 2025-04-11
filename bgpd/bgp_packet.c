@@ -343,8 +343,8 @@ static int bgp_nlri_parse_rtc(struct peer *peer, struct attr *attr,
 		p.family = AF_RTC;
 
 		p.prefixlen = *pnt++;
-		if (p.prefixlen > 96 ||
-		    (p.prefixlen != 0 && p.prefixlen < 32)) {
+		if (p.prefixlen > BGP_RTC_PREFIX_MAXLEN ||
+		    (p.prefixlen != 0 && p.prefixlen < BGP_RTC_PREFIX_ASLEN)) {
 			flog_err(EC_BGP_PKT_PROCESS,
 				 "%u:%s - SAFI_RTC parse error: Invalid prefixlen: %u",
 				 peer->bgp->vrf_id, peer->host, p.prefixlen);
@@ -366,12 +366,12 @@ static int bgp_nlri_parse_rtc(struct peer *peer, struct attr *attr,
 		p.u.prefix_rtc.origin_as = ntohl(*(uint32_t *)pnt);
 
 		/* origin-as only is valid */
-		if (p.prefixlen == 32)
+		if (p.prefixlen == BGP_RTC_PREFIX_ASLEN)
 			goto parse_done;
 
 		memcpy(value, pnt + 4, psize - 4);
-		offset = (p.prefixlen - 32) / 8;
-		shift = (p.prefixlen - 32) % 8;
+		offset = (p.prefixlen - BGP_RTC_PREFIX_ASLEN) / 8;
+		shift = (p.prefixlen - BGP_RTC_PREFIX_ASLEN) % 8;
 
 		if (offset < ECOMMUNITY_SIZE) {
 			for (; shift < 8; shift++) {

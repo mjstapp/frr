@@ -9,8 +9,9 @@
 #include "lib/zebra.h"
 #include "bgpd.h"
 
-/* Max prefixlen for an RTC "prefix", formed from an RT */
+/* bitlens for RTC "prefix", formed from an AS and an RT */
 #define BGP_RTC_PREFIX_MAXLEN 96
+#define BGP_RTC_PREFIX_ASLEN  32
 
 /* Timeout for deferring VPN update processing */
 #define BGP_RTC_DEFER_MAX_SECS 60
