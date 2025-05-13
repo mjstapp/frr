@@ -1414,6 +1414,9 @@ extern struct peer_connection *bgp_peer_connection_new(struct peer *peer);
 extern void bgp_peer_connection_free(struct peer_connection **connection);
 extern void bgp_peer_connection_buffers_free(struct peer_connection *connection);
 
+/* Peer event history */
+PREDECL_LIST(peer_hist_list);
+
 /* BGP neighbor structure. */
 struct peer {
 	/* BGP structure.  */
@@ -2097,6 +2100,9 @@ struct peer {
 
 	/* Linkage for hash of clearing peers being cleared in a batch */
 	struct bgp_clearing_hash_item clear_hash_link;
+
+	/* Linkage */
+	struct peer_hist_list_head fsm_hist;
 
 	QOBJ_FIELDS;
 };
@@ -3091,6 +3097,14 @@ void bgp_clearing_batch_completed(struct bgp_clearing_info *cinfo);
 void bgp_clearing_batch_begin(struct bgp *bgp);
 /* End a new batch of peers to clear */
 void bgp_clearing_batch_end_event_start(struct bgp *bgp);
+
+/* Peer event history: peer FSM -> 'next' */
+void bgp_enable_peer_history(bool enable);
+bool bgp_peer_history_enabled(void);
+void peer_history_update(struct peer *peer, struct peer_connection *connection,
+			 enum bgp_fsm_status next);
+void peer_history_xfer(struct peer *peer, struct peer *from_peer);
+void peer_history_show(struct vty *vty, const struct peer *peer, bool use_json);
 
 #ifdef _FRR_ATTRIBUTE_PRINTFRR
 /* clang-format off */
