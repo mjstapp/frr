@@ -18904,6 +18904,65 @@ DEFPY(bgp_retain_route_target, bgp_retain_route_target_cmd,
 	return CMD_SUCCESS;
 }
 
+DEFPY(peer_hist_enable,
+      peer_hist_enable_cmd,
+      "[no] bgp peer history",
+      NO_STR
+      BGP_STR
+      "BGP peers\n"
+      "Peer event history\n")
+{
+	bgp_enable_peer_history(no == NULL);
+	return CMD_SUCCESS;
+}
+
+DEFPY (show_peer_fsm_hist,
+       show_peer_fsm_hist_cmd,
+       "show bgp [<view|vrf> VIEWVRFNAME]$vstr "
+       " peer <A.B.C.D|X:X::X:X|WORD>$pstr history [json]",
+       SHOW_STR
+       BGP_STR
+       BGP_INSTANCE_HELP_STR
+       "Specify a BGP peer\n"
+       NEIGHBOR_ADDR_STR2
+       "Peer event history\n"
+       JSON_STR)
+{
+	struct bgp *bgp;
+	struct peer *peer = NULL;
+	bool json_p = false;
+	union sockunion su;
+	int ret;
+
+	if (vstr)
+		bgp = bgp_lookup_by_name(vstr);
+	else
+		bgp = bgp_get_default();
+
+	if (bgp == NULL) {
+		vty_out(vty, "%% BGP instance not found\n");
+		return CMD_WARNING;
+	}
+
+	/* Locate peer */
+	ret = str2sockunion(pstr, &su);
+	if (ret < 0)
+		peer = peer_lookup_by_hostname(bgp, pstr);
+	else
+		peer = peer_lookup(bgp, &su);
+
+	if (!peer) {
+		vty_out(vty, "%% Peer not found\n");
+		return CMD_WARNING;
+	}
+
+	json_p = use_json(argc, argv);
+
+	peer_history_show(vty, peer, json_p);
+
+	return CMD_SUCCESS;
+}
+
 static void bgp_config_write_redistribute(struct vty *vty, struct bgp *bgp,
 					  afi_t afi, safi_t safi)
 {
@@ -20150,6 +20209,9 @@ int bgp_config_write(struct vty *vty)
 
 	if (bm->outq_limit != BM_DEFAULT_Q_LIMIT)
 		vty_out(vty, "bgp output-queue-limit %u\n", bm->outq_limit);
+
+	if (bgp_peer_history_enabled())
+		vty_out(vty, "bgp peer history\n");
 
 	vty_out(vty, "!\n");
 
@@ -22678,6 +22740,9 @@ void bgp_vty_init(void)
 
 	/* Some overall BGP information */
 	install_element(VIEW_NODE, &show_bgp_router_cmd);
+
+	install_element(CONFIG_NODE, &peer_hist_enable_cmd);
+	install_element(VIEW_NODE, &show_peer_fsm_hist_cmd);
 
 	/* Community-list. */
 	community_list_vty();
