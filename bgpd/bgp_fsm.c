@@ -147,7 +147,7 @@ static struct peer *peer_xfer_conn(struct peer *from_peer)
 	going_away = peer->connection;
 
 	/*
-	 * Let's check that we are not going to loose known configuration
+	 * Let's check that we are not going to lose known configuration
 	 * state based upon doppelganger rules.
 	 */
 	FOREACH_AFI_SAFI (afi, safi) {
@@ -223,6 +223,9 @@ static struct peer *peer_xfer_conn(struct peer *from_peer)
 	peer->max_packet_size = from_peer->max_packet_size;
 
 	BGP_GR_ROUTER_DETECT_AND_SEND_CAPABILITY_TO_ZEBRA(bgp, bgp->peer);
+
+	/* Transfer FSM event history */
+	peer_history_xfer(peer, from_peer);
 
 	if (bgp_peer_gr_mode_get(peer) == PEER_DISABLE) {
 
@@ -2845,6 +2848,9 @@ int bgp_event_update(struct peer_connection *connection,
 			   lookup_msg(bgp_status_msg, connection->status, NULL),
 			   lookup_msg(bgp_status_msg, next, NULL), connection->fd,
 			   bgp_peer_get_connection_direction(connection));
+
+	/* Update peer event history */
+	peer_history_update(peer, connection, next);
 
 	peer->last_event = peer->cur_event;
 	peer->cur_event = event;

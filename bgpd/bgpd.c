@@ -105,6 +105,29 @@ static uint32_t peer_clearing_hashfn(const struct peer *p1);
 DECLARE_HASH(bgp_clearing_hash, struct peer, clear_hash_link,
 	     peer_clearing_hash_cmp, peer_clearing_hashfn);
 
+/*
+ * Peer event history
+ */
+static bool bgp_peer_hist_enabled;
+
+/* Mem type for peer event history */
+DEFINE_MTYPE_STATIC(BGPD, PEER_HIST, "Peer history");
+struct peer_fsm_hist {
+	struct timeval tv;
+	enum bgp_fsm_status curr_status;
+	enum bgp_fsm_status next_status;
+	enum connection_direction dir;
+	/* List linkage */
+	struct peer_hist_list_item link;
+};
+
+#define PEER_FSM_HIST_MAX 10
+
+/* Declare/define list type  */
+DECLARE_LIST(peer_hist_list, struct peer_fsm_hist, link);
+
+static void peer_fsm_hist_clear(struct peer *peer);
+
 /* BGP process wide configuration.  */
 static struct bgp_master bgp_master;
 
@@ -1224,9 +1247,9 @@ void bgp_peer_connection_free(struct peer_connection **connection)
 	connection = NULL;
 }
 
-const char *bgp_peer_get_connection_direction(struct peer_connection *connection)
+static const char *bgp_peer_direction_str(enum connection_direction dir)
 {
-	switch (connection->dir) {
+	switch (dir) {
 	case UNKNOWN:
 		return "Unknown";
 	case CONNECTION_INCOMING:
@@ -1239,6 +1262,11 @@ const char *bgp_peer_get_connection_direction(struct peer_connection *connection
 
 	assert(!"DEV Escape: Expected switch to take care of this state");
 	return "DEV ESCAPE";
+}
+
+const char *bgp_peer_get_connection_direction(const struct peer_connection *connection)
+{
+	return bgp_peer_direction_str(connection->dir);
 }
 
 struct peer_connection *bgp_peer_connection_new(struct peer *peer, const union sockunion *su)
@@ -1705,6 +1733,8 @@ struct peer *peer_new(struct bgp *bgp, union sockunion *su)
 	/* Get service port number.  */
 	sp = getservbyname("bgp", "tcp");
 	peer->port = (sp == NULL) ? BGP_PORT_DEFAULT : ntohs(sp->s_port);
+
+	peer_hist_list_init(&peer->fsm_hist);
 
 	QOBJ_REG(peer, peer);
 	return peer;
@@ -2815,6 +2845,9 @@ int peer_delete(struct peer *peer)
 			bgp_peer_conn_errlist_del(&bgp->peer_conn_errlist,
 						  peer->connection);
 	}
+
+	/* Clean up event history */
+	peer_fsm_hist_clear(peer);
 
 	if (CHECK_FLAG(peer->sflags, PEER_STATUS_NSF_WAIT))
 		peer_nsf_stop(peer);
@@ -9735,6 +9768,144 @@ void bgp_conn_err_reschedule(struct bgp *bgp)
 {
 	event_add_event(bm->master, bgp_process_conn_error, bgp, 0,
 			&bgp->t_conn_errors);
+}
+
+/*
+ * Peer event history
+ */
+void bgp_enable_peer_history(bool enable)
+{
+	bgp_peer_hist_enabled = enable;
+}
+
+bool bgp_peer_history_enabled(void)
+{
+	return bgp_peer_hist_enabled;
+}
+
+static struct peer_fsm_hist *fsm_hist_alloc(const struct peer_connection *conn,
+					    enum bgp_fsm_status next)
+{
+	struct peer_fsm_hist *ph;
+
+	ph = XCALLOC(MTYPE_PEER_HIST, sizeof(struct peer_fsm_hist));
+	gettimeofday(&(ph->tv), NULL);
+	ph->curr_status = conn->status;
+	ph->next_status = next;
+	ph->dir = conn->dir;
+
+	return ph;
+}
+
+/*
+ * Clear all fsm history events for 'peer'
+ */
+static void peer_fsm_hist_clear(struct peer *peer)
+{
+	struct peer_fsm_hist *ph;
+
+	while ((ph = peer_hist_list_pop(&peer->fsm_hist)) != NULL)
+		XFREE(MTYPE_PEER_HIST, ph);
+}
+
+/*
+ * Peer event history: peer FSM changing to 'next'
+ */
+void peer_history_update(struct peer *peer, struct peer_connection *connection,
+			 enum bgp_fsm_status next)
+{
+	struct peer_fsm_hist *ph;
+
+	if (!bgp_peer_hist_enabled)
+		return;
+
+	/* Interesting change? */
+	if (connection->status == next)
+		return;
+
+	ph = fsm_hist_alloc(connection, next);
+
+	/* List is old-to-new order; add new entry at tail */
+	peer_hist_list_add_tail(&peer->fsm_hist, ph);
+
+	/* Limit the number of events we'll hold per-peer */
+	if (peer_hist_list_count(&peer->fsm_hist) > PEER_FSM_HIST_MAX) {
+		ph = peer_hist_list_pop(&peer->fsm_hist);
+		XFREE(MTYPE_PEER_HIST, ph);
+	}
+}
+
+/*
+ * Transfer peer history data to 'peer' from 'from_peer' - this can happen
+ * during, sigh, doppelganger processing.
+ */
+void peer_history_xfer(struct peer *peer, struct peer *from_peer)
+{
+	struct peer_fsm_hist *ph;
+
+	if (peer == NULL || from_peer == NULL)
+		return;
+
+	peer_fsm_hist_clear(peer);
+
+	while ((ph = peer_hist_list_pop(&from_peer->fsm_hist)) != NULL)
+		peer_hist_list_add_tail(&peer->fsm_hist, ph);
+
+}
+
+/*
+ * Show output for peer fsm history
+ */
+void peer_history_show(struct vty *vty, const struct peer *peer, bool use_json)
+{
+	const struct peer_fsm_hist *ph;
+	char tbuf[40];
+	struct tm tm;
+	json_object *jobj, *jlist, *json;
+
+	if (use_json) {
+		jobj = json_object_new_object();
+		json_object_string_add(jobj, "peerName", peer->host);
+		jlist = json_object_new_array();
+	} else {
+		vty_out(vty, "Peer %s:\n", peer->host);
+	}
+
+	frr_each (peer_hist_list_const, &peer->fsm_hist, ph) {
+		localtime_r(&(ph->tv.tv_sec), &tm);
+		strftime(tbuf, sizeof(tbuf), "%c", &tm);
+
+		if (use_json) {
+			json = json_object_new_object();
+
+			json_object_int_add(json, "timestampSecs", ph->tv.tv_sec);
+			json_object_int_add(json, "timestampUsecs", ph->tv.tv_usec);
+			json_object_string_add(json, "timestamp", tbuf);
+			json_object_string_add(json, "currState",
+					       lookup_msg(bgp_status_msg,
+							  ph->curr_status, NULL));
+			json_object_string_add(json, "nextState",
+					       lookup_msg(bgp_status_msg,
+							  ph->next_status, NULL));
+			json_object_string_add(json, "direction",
+					       bgp_peer_direction_str(ph->dir));
+			json_object_array_add(jlist, json);
+		} else {
+			vty_out(vty, "%s  %s -> %s (%s)\n", tbuf,
+				lookup_msg(bgp_status_msg, ph->curr_status, NULL),
+				lookup_msg(bgp_status_msg, ph->next_status, NULL),
+				bgp_peer_direction_str(ph->dir));
+		}
+	}
+
+	if (use_json) {
+		if (json_object_array_length(jlist) > 0)
+			json_object_object_add(jobj, "history", jlist);
+		else
+			json_object_free(jlist);
+
+		vty_json(vty, jobj);
+	}
 }
 
 printfrr_ext_autoreg_p("BP", printfrr_bp);
