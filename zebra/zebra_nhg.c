@@ -2563,6 +2563,11 @@ static int nexthop_active(struct nexthop *nexthop, struct nhg_hash_entry *nhe,
 								nexthop, NULL);
 				resolved = 1;
 
+				/* Capture the NHG ID used to resolve this
+				 * nexthop.
+				 */
+				nexthop->resolved_thru = match->nhe_id;
+
 				/* If there are backup nexthops, capture
 				 * that info with the resolving nexthop.
 				 */
