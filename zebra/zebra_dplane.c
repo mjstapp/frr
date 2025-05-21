@@ -4633,6 +4633,7 @@ dplane_route_update_internal(struct route_node *rn,
 			}
 #endif	/* !HAVE_NETLINK */
 		}
+
 		/* Enqueue context for processing */
 		ret = dplane_update_enqueue(ctx);
 	}
