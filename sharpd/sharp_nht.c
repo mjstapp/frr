@@ -107,6 +107,8 @@ static void sharp_nhgroup_add_cb(const char *name)
 {
 	struct sharp_nhg *snhg;
 
+	zlog_debug("%s: nhg %s", __func__, name);
+
 	snhg = XCALLOC(MTYPE_NHG, sizeof(*snhg));
 	snhg->id = sharp_get_next_nhid();
 	strlcpy(snhg->name, name, sizeof(snhg->name));
@@ -119,6 +121,8 @@ static void sharp_nhgroup_modify_cb(const struct nexthop_group_cmd *nhgc)
 	struct sharp_nhg lookup;
 	struct sharp_nhg *snhg;
 	struct nexthop_group_cmd *bnhgc = NULL;
+
+	zlog_debug("%s: nhg %s", __func__, nhgc->name);
 
 	strlcpy(lookup.name, nhgc->name, sizeof(lookup.name));
 	snhg = sharp_nhg_rb_find(&nhg_head, &lookup);
@@ -139,6 +143,8 @@ static void sharp_nhgroup_add_nexthop_cb(const struct nexthop_group_cmd *nhgc,
 	struct sharp_nhg *snhg;
 	struct nexthop_group_cmd *bnhgc = NULL;
 
+	zlog_debug("%s: nhg %s, nh %pNHv", __func__, nhgc->name, nhop);
+
 	strlcpy(lookup.name, nhgc->name, sizeof(lookup.name));
 	snhg = sharp_nhg_rb_find(&nhg_head, &lookup);
 
@@ -155,6 +161,8 @@ static void sharp_nhgroup_del_nexthop_cb(const struct nexthop_group_cmd *nhgc,
 	struct sharp_nhg *snhg;
 	struct nexthop_group_cmd *bnhgc = NULL;
 
+	zlog_debug("%s: nhg %s, nh %pNHv", __func__, nhgc->name, nhop);
+
 	strlcpy(lookup.name, nhgc->name, sizeof(lookup.name));
 	snhg = sharp_nhg_rb_find(&nhg_head, &lookup);
 
@@ -169,13 +177,19 @@ static void sharp_nhgroup_delete_cb(const char *name)
 	struct sharp_nhg lookup;
 	struct sharp_nhg *snhg;
 
+	zlog_debug("%s: nhg %s", __func__, name);
+
 	strlcpy(lookup.name, name, sizeof(lookup.name));
 	snhg = sharp_nhg_rb_find(&nhg_head, &lookup);
-	if (!snhg)
+	if (!snhg) {
+		zlog_debug("%s: NHG %s not found", __func__, name);
 		return;
+	}
 
-	if (sharp_nhgroup_id_is_installed(snhg->id))
+	if (sharp_nhgroup_id_is_installed(snhg->id)) {
 		nhg_del(snhg->id);
+	}
+
 	sharp_nhg_rb_del(&nhg_head, snhg);
 	XFREE(MTYPE_NHG, snhg);
 }
