@@ -557,7 +557,8 @@ void nhg_add(uint32_t id, const struct nexthop_group_cmd *nhgc,
 		}
 
 		/* Unresolved nexthops will lead to failure - only send
-		 * nexthops that zebra will consider valid.
+		 * nexthops that zebra will consider valid, or ask for
+		 * recursive resolution.
 		 */
 		if (!CHECK_FLAG(nhgc->flags, NHG_CMD_FLAG_RECURSIVE) &&
 		    nh->ifindex == 0)

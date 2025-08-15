@@ -204,7 +204,8 @@ DEFPY (install_routes,
        "sharp install routes [vrf NAME$vrf_name]\
 	  <A.B.C.D$start4|X:X::X:X$start6>\
 	  <nexthop <A.B.C.D$nexthop4|X:X::X:X$nexthop6>|\
-	   nexthop-group NHGNAME$nexthop_group>\
+	   nexthop-group NHGNAME$nexthop_group |\
+           ecmp NHGNAME$ecmp_name> \
 	  [backup$backup <A.B.C.D$backup_nexthop4|X:X::X:X$backup_nexthop6>] \
 	  (1-1000000)$routes [instance (0-255)$instance] [repeat (2-1000)$rpt] [opaque WORD] [no-recurse$norecurse]",
        "Sharp routing Protocol\n"
@@ -219,6 +220,8 @@ DEFPY (install_routes,
        "V6 Nexthop address to use\n"
        "Nexthop-Group to use\n"
        "The Name of the nexthop-group\n"
+       "Use ECMP nexthops\n"
+       "Nexthop-Group to use for ECMP\n"
        "Backup nexthop to use(Can be an IPv4 or IPv6 address)\n"
        "Backup V4 Nexthop address to use\n"
        "Backup V6 Nexthop address to use\n"
@@ -235,6 +238,7 @@ DEFPY (install_routes,
 	struct prefix prefix;
 	uint32_t rts;
 	uint32_t nhgid = 0;
+	struct nexthop_group_cmd *nhgc;
 
 	sg.r.total_routes = routes;
 	sg.r.installed_routes = 0;
@@ -282,7 +286,7 @@ DEFPY (install_routes,
 	}
 
 	if (nexthop_group) {
-		struct nexthop_group_cmd *nhgc = nhgc_find(nexthop_group);
+		nhgc = nhgc_find(nexthop_group);
 		if (!nhgc) {
 			vty_out(vty,
 				"Specified Nexthop Group: %s does not exist\n",
@@ -309,6 +313,16 @@ DEFPY (install_routes,
 			sg.r.backup_nhop.vrf_id = vrf->vrf_id;
 			sg.r.backup_nhop_group.nexthop = bnhgc->nhg.nexthop;
 		}
+	} else if (ecmp_name) {
+		nhgc = nhgc_find(ecmp_name);
+		if (!nhgc) {
+			vty_out(vty,
+				"Specified Nexthop Group: %s does not exist\n",
+				ecmp_name);
+			return CMD_WARNING;
+		}
+
+		sg.r.nhop_group.nexthop = nhgc->nhg.nexthop;
 	} else {
 		if (nexthop4.s_addr != INADDR_ANY) {
 			sg.r.nhop.gate.ipv4 = nexthop4;

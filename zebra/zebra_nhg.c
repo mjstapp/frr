@@ -1857,8 +1857,15 @@ void zebra_nhg_decrement_ref(struct nhg_hash_entry *nhe)
 		SET_FLAG(nhe->flags, NEXTHOP_GROUP_KEEP_AROUND);
 		event_add_timer(zrouter.master, zebra_nhg_timer, nhe,
 				zrouter.nhg_keep, &nhe->timer);
+
+		/* TODO */
+		zlog_debug("%s: nhe %pNG (%p) KEEP_AROUND", __func__, nhe, nhe);
 		return;
 	}
+
+	/* TODO */
+	zlog_debug("%s: nhe %p (%pNG) shutdown %d", __func__, nhe, nhe,
+		   zebra_router_in_shutdown());
 
 	if (!zebra_nhg_depends_is_empty(nhe))
 		nhg_connected_tree_decrement_ref(&nhe->nhg_depends);
@@ -3823,6 +3830,8 @@ static int zebra_nhg_sweep_entry(struct hash_bucket *bucket, void *arg)
 	 * didn't get started. This handles graceful restart & retain scenario.
 	 */
 	if (PROTO_OWNED(nhe) && nhe->refcnt == 1) {
+		/* TODO */
+		zlog_debug("%s: found PROTO_OWNED nhe %pNG", __func__, nhe);
 		zebra_nhg_decrement_ref(nhe);
 		return HASHWALK_ABORT;
 	}
@@ -3842,6 +3851,9 @@ static int zebra_nhg_sweep_entry(struct hash_bucket *bucket, void *arg)
 void zebra_nhg_sweep_table(struct hash *hash)
 {
 	uint32_t count;
+
+	/* TODO */
+	zlog_debug("%s: called", __func__);
 
 	/*
 	 * Yes this is extremely odd.  Effectively nhg's have
@@ -3939,7 +3951,7 @@ struct nhg_hash_entry *zebra_nhe_proto_add(struct nhg_hash_entry *nhe)
 	struct nhg_connected *rb_node_dep = NULL;
 	bool replace = false;
 	int ret = 0;
-	const struct nexthop_group *nhg;
+	const struct nexthop_group *nhg = NULL;
 	uint32_t count = 0;
 	bool change_p = false;
 
@@ -4135,6 +4147,9 @@ unsigned long zebra_nhg_score_proto(int type)
 	iter.type = type;
 	iter.found = list_new();
 
+	/* TODO */
+	zlog_debug("%s: proto %s (%d)", __func__, zebra_route_string(type), type);
+
 	/* Find matching entries to remove */
 	hash_iterate(zrouter.nhgs_id, zebra_nhg_score_proto_entry, &iter);
 
@@ -4189,7 +4204,9 @@ static ssize_t printfrr_nhghe(struct fbuf *buf, struct printfrr_eargs *ea,
 		}
 	}
 
-	ret += bputs(buf, "]");
+// TODO
+//	ret += bputs(buf, "]");
+	ret += bprintfrr(buf, "]%d", nhe->afi);
 	return ret;
 }
 
