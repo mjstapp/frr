@@ -18,6 +18,15 @@
 extern "C" {
 #endif
 
+/*
+ * Common prefix for macros, static or non-static
+ */
+#ifndef TSAFE_PUBLIC
+#  define TSAFE_MACRO macro_inline
+#  define TSAFE_INLINE static inline
+#  define TSAFE_PURE macro_pure
+#endif
+
 /* generic macros for all list-like types */
 
 /* to iterate using the const variants of the functions, append "_const" to
@@ -61,6 +70,9 @@ extern "C" {
  * bundle them together here.
  */
 #define TYPESAFE_FIRST_NEXT(prefix, type)                                      \
+const type *prefix ## _const_first(const struct prefix##_head *h);             \
+const type *prefix ## _const_next(const struct prefix##_head *h,               \
+				  const type *item);                           \
 macro_pure type *prefix ## _first(struct prefix##_head *h)                     \
 {                                                                              \
 	return (type *)prefix ## _const_first(h);                              \
@@ -71,6 +83,9 @@ macro_pure type *prefix ## _next(struct prefix##_head *h, type *item)          \
 }                                                                              \
 /* ... */
 #define TYPESAFE_LAST_PREV(prefix, type)                                       \
+const type *prefix ## _const_last(const struct prefix##_head *h);              \
+const type *prefix ## _const_prev(const struct prefix##_head *h,               \
+				  const type *item);			       \
 macro_pure type *prefix ## _last(struct prefix##_head *h)                      \
 {                                                                              \
 	return (type *)prefix ## _const_last(h);                               \
@@ -81,19 +96,21 @@ macro_pure type *prefix ## _prev(struct prefix##_head *h, type *item)          \
 }                                                                              \
 /* ... */
 #define TYPESAFE_FIND(prefix, type)                                            \
-macro_inline type *prefix ## _find(struct prefix##_head *h,                    \
+const type *prefix ## _const_find(const struct prefix##_head *h,               \
+				  const type *item);			       \
+TSAFE_MACRO type *prefix ## _find(struct prefix##_head *h,                    \
 				   const type *item)                           \
 {                                                                              \
 	return (type *)prefix ## _const_find(h, item);                         \
 }                                                                              \
 /* ... */
 #define TYPESAFE_FIND_CMP(prefix, type)                                        \
-macro_inline type *prefix ## _find_lt(struct prefix##_head *h,                 \
+TSAFE_MACRO type *prefix ## _find_lt(struct prefix##_head *h,                 \
 				      const type *item)                        \
 {                                                                              \
 	return (type *)prefix ## _const_find_lt(h, item);                      \
 }                                                                              \
-macro_inline type *prefix ## _find_gteq(struct prefix##_head *h,               \
+TSAFE_MACRO type *prefix ## _find_gteq(struct prefix##_head *h,               \
 					const type *item)                      \
 {                                                                              \
 	return (type *)prefix ## _const_find_gteq(h, item);                    \
@@ -102,7 +119,7 @@ macro_inline type *prefix ## _find_gteq(struct prefix##_head *h,               \
 
 /* *_member via find - when there is no better membership check than find() */
 #define TYPESAFE_MEMBER_VIA_FIND(prefix, type)                                 \
-macro_inline bool prefix ## _member(struct prefix##_head *h,                   \
+TSAFE_MACRO bool prefix ## _member(struct prefix##_head *h,                   \
 				    const type *item)                          \
 {                                                                              \
 	return item == prefix ## _const_find(h, item);                         \
@@ -111,7 +128,7 @@ macro_inline bool prefix ## _member(struct prefix##_head *h,                   \
 
 /* *_member via find_gteq - same for non-unique containers */
 #define TYPESAFE_MEMBER_VIA_FIND_GTEQ(prefix, type, cmpfn)                     \
-macro_inline bool prefix ## _member(struct prefix##_head *h,                   \
+TSAFE_MACRO bool prefix ## _member(struct prefix##_head *h,                   \
 				    const type *item)                          \
 {                                                                              \
 	const type *iter;                                                      \
@@ -131,7 +148,7 @@ macro_inline bool prefix ## _member(struct prefix##_head *h,                   \
  * DLIST and SKIPLIST), just switch out the entire head
  */
 #define TYPESAFE_SWAP_ALL_SIMPLE(prefix)                                       \
-macro_inline void prefix ## _swap_all(struct prefix##_head *a,                 \
+TSAFE_MACRO void prefix ## _swap_all(struct prefix##_head *a,                 \
 				      struct prefix##_head *b)                 \
 {                                                                              \
 	struct prefix##_head tmp = *a;                                         \
@@ -158,7 +175,7 @@ struct slist_head {
 extern struct slist_item typesafe_slist_sentinel;
 #define _SLIST_LAST &typesafe_slist_sentinel
 
-static inline void typesafe_list_add(struct slist_head *head,
+TSAFE_INLINE void typesafe_list_add(struct slist_head *head,
 		struct slist_item **pos, struct slist_item *item)
 {
 	item->next = *pos;
@@ -188,25 +205,25 @@ MACRO_REQUIRE_SEMICOLON() /* end */
 
 #define DECLARE_LIST(prefix, type, field)                                      \
                                                                                \
-macro_inline void prefix ## _init(struct prefix##_head *h)                     \
+TSAFE_MACRO void prefix ## _init(struct prefix##_head *h)                     \
 {                                                                              \
 	memset(h, 0, sizeof(*h));                                              \
 	h->sh.first = _SLIST_LAST;                                             \
 	h->sh.last_next = &h->sh.first;                                        \
 }                                                                              \
-macro_inline void prefix ## _fini(struct prefix##_head *h)                     \
+TSAFE_MACRO void prefix ## _fini(struct prefix##_head *h)                     \
 {                                                                              \
 	memset(h, 0, sizeof(*h));                                              \
 }                                                                              \
-macro_inline void prefix ## _add_head(struct prefix##_head *h, type *item)     \
+TSAFE_MACRO void prefix ## _add_head(struct prefix##_head *h, type *item)     \
 {                                                                              \
 	typesafe_list_add(&h->sh, &h->sh.first, &item->field.si);              \
 }                                                                              \
-macro_inline void prefix ## _add_tail(struct prefix##_head *h, type *item)     \
+TSAFE_MACRO void prefix ## _add_tail(struct prefix##_head *h, type *item)     \
 {                                                                              \
 	typesafe_list_add(&h->sh, h->sh.last_next, &item->field.si);           \
 }                                                                              \
-macro_inline void prefix ## _add_after(struct prefix##_head *h,                \
+TSAFE_MACRO void prefix ## _add_after(struct prefix##_head *h,                \
 		type *after, type *item)                                       \
 {                                                                              \
 	struct slist_item **nextp;                                             \
@@ -214,7 +231,7 @@ macro_inline void prefix ## _add_after(struct prefix##_head *h,                \
 	typesafe_list_add(&h->sh, nextp, &item->field.si);                     \
 }                                                                              \
 /* TODO: del_hint */                                                           \
-macro_inline type *prefix ## _del(struct prefix##_head *h, type *item)         \
+TSAFE_MACRO type *prefix ## _del(struct prefix##_head *h, type *item)         \
 {                                                                              \
 	struct slist_item **iter = &h->sh.first;                               \
 	while (*iter != _SLIST_LAST && *iter != &item->field.si)               \
@@ -228,7 +245,7 @@ macro_inline type *prefix ## _del(struct prefix##_head *h, type *item)         \
 	item->field.si.next = NULL;                                            \
 	return item;                                                           \
 }                                                                              \
-macro_inline type *prefix ## _pop(struct prefix##_head *h)                     \
+TSAFE_MACRO type *prefix ## _pop(struct prefix##_head *h)                     \
 {                                                                              \
 	struct slist_item *sitem = h->sh.first;                                \
 	if (sitem == _SLIST_LAST)                                              \
@@ -240,7 +257,7 @@ macro_inline type *prefix ## _pop(struct prefix##_head *h)                     \
 	sitem->next = NULL;                                                    \
 	return container_of(sitem, type, field.si);                            \
 }                                                                              \
-macro_inline void prefix ## _swap_all(struct prefix##_head *a,                 \
+TSAFE_MACRO void prefix ## _swap_all(struct prefix##_head *a,                 \
 				      struct prefix##_head *b)                 \
 {                                                                              \
 	struct prefix##_head tmp = *a;                                         \
@@ -251,13 +268,13 @@ macro_inline void prefix ## _swap_all(struct prefix##_head *a,                 \
 	if (b->sh.last_next == &a->sh.first)                                   \
 		b->sh.last_next = &b->sh.first;                                \
 }                                                                              \
-macro_pure const type *prefix ## _const_first(const struct prefix##_head *h)   \
+TSAFE_PURE const type *prefix ## _const_first(const struct prefix##_head *h)   \
 {                                                                              \
 	if (h->sh.first != _SLIST_LAST)                                        \
 		return container_of(h->sh.first, type, field.si);              \
 	return NULL;                                                           \
 }                                                                              \
-macro_pure const type *prefix ## _const_next(const struct prefix##_head *h,    \
+TSAFE_PURE const type *prefix ## _const_next(const struct prefix##_head *h,    \
 					     const type *item)                 \
 {                                                                              \
 	const struct slist_item *sitem = &item->field.si;                      \
@@ -266,7 +283,7 @@ macro_pure const type *prefix ## _const_next(const struct prefix##_head *h,    \
 	return NULL;                                                           \
 }                                                                              \
 TYPESAFE_FIRST_NEXT(prefix, type)                                              \
-macro_pure type *prefix ## _next_safe(struct prefix##_head *h, type *item)     \
+TSAFE_PURE type *prefix ## _next_safe(struct prefix##_head *h, type *item)     \
 {                                                                              \
 	struct slist_item *sitem;                                              \
 	if (!item)                                                             \
@@ -276,15 +293,15 @@ macro_pure type *prefix ## _next_safe(struct prefix##_head *h, type *item)     \
 		return container_of(sitem->next, type, field.si);              \
 	return NULL;                                                           \
 }                                                                              \
-macro_pure size_t prefix ## _count(const struct prefix##_head *h)              \
+TSAFE_PURE size_t prefix ## _count(const struct prefix##_head *h)              \
 {                                                                              \
 	return h->sh.count;                                                    \
 }                                                                              \
-macro_pure bool prefix ## _anywhere(const type *item)                          \
+TSAFE_PURE bool prefix ## _anywhere(const type *item)                          \
 {                                                                              \
 	return item->field.si.next != NULL;                                    \
 }                                                                              \
-macro_pure bool prefix ## _member(const struct prefix##_head *h,               \
+TSAFE_PURE bool prefix ## _member(const struct prefix##_head *h,               \
 				  const type *item)                            \
 {                                                                              \
 	return typesafe_list_member(&h->sh, &item->field.si);                  \
@@ -302,7 +319,7 @@ struct dlist_head {
 	size_t count;
 };
 
-static inline void typesafe_dlist_add(struct dlist_head *head,
+TSAFE_INLINE void typesafe_dlist_add(struct dlist_head *head,
 		struct dlist_item *prev, struct dlist_item *item)
 {
 	/* SA on clang-11 thinks this can happen, but in reality -assuming no
@@ -331,7 +348,7 @@ static inline void typesafe_dlist_add(struct dlist_head *head,
 	head->count++;
 }
 
-static inline void typesafe_dlist_swap_all(struct dlist_head *a,
+TSAFE_INLINE void typesafe_dlist_swap_all(struct dlist_head *a,
 					   struct dlist_head *b)
 {
 	struct dlist_head tmp = *a;
@@ -374,32 +391,32 @@ MACRO_REQUIRE_SEMICOLON() /* end */
 
 #define DECLARE_DLIST(prefix, type, field)                                     \
                                                                                \
-macro_inline void prefix ## _init(struct prefix##_head *h)                     \
+TSAFE_MACRO void prefix ## _init(struct prefix##_head *h)                     \
 {                                                                              \
 	memset(h, 0, sizeof(*h));                                              \
 	h->dh.hitem.prev = &h->dh.hitem;                                       \
 	h->dh.hitem.next = &h->dh.hitem;                                       \
 }                                                                              \
-macro_inline void prefix ## _fini(struct prefix##_head *h)                     \
+TSAFE_MACRO void prefix ## _fini(struct prefix##_head *h)                     \
 {                                                                              \
 	memset(h, 0, sizeof(*h));                                              \
 }                                                                              \
-macro_inline void prefix ## _add_head(struct prefix##_head *h, type *item)     \
+TSAFE_MACRO void prefix ## _add_head(struct prefix##_head *h, type *item)     \
 {                                                                              \
 	typesafe_dlist_add(&h->dh, &h->dh.hitem, &item->field.di);             \
 }                                                                              \
-macro_inline void prefix ## _add_tail(struct prefix##_head *h, type *item)     \
+TSAFE_MACRO void prefix ## _add_tail(struct prefix##_head *h, type *item)     \
 {                                                                              \
 	typesafe_dlist_add(&h->dh, h->dh.hitem.prev, &item->field.di);         \
 }                                                                              \
-macro_inline void prefix ## _add_after(struct prefix##_head *h,                \
+TSAFE_MACRO void prefix ## _add_after(struct prefix##_head *h,                \
 		type *after, type *item)                                       \
 {                                                                              \
 	struct dlist_item *prev;                                               \
 	prev = after ? &after->field.di : &h->dh.hitem;                        \
 	typesafe_dlist_add(&h->dh, prev, &item->field.di);                     \
 }                                                                              \
-macro_inline type *prefix ## _del(struct prefix##_head *h, type *item)         \
+TSAFE_MACRO type *prefix ## _del(struct prefix##_head *h, type *item)         \
 {                                                                              \
 	struct dlist_item *ditem = &item->field.di;                            \
 	ditem->prev->next = ditem->next;                                       \
@@ -408,7 +425,7 @@ macro_inline type *prefix ## _del(struct prefix##_head *h, type *item)         \
 	ditem->prev = ditem->next = NULL;                                      \
 	return item;                                                           \
 }                                                                              \
-macro_inline type *prefix ## _pop(struct prefix##_head *h)                     \
+TSAFE_MACRO type *prefix ## _pop(struct prefix##_head *h)                     \
 {                                                                              \
 	struct dlist_item *ditem = h->dh.hitem.next;                           \
 	if (ditem == &h->dh.hitem)                                             \
@@ -419,19 +436,19 @@ macro_inline type *prefix ## _pop(struct prefix##_head *h)                     \
 	ditem->prev = ditem->next = NULL;                                      \
 	return container_of(ditem, type, field.di);                            \
 }                                                                              \
-macro_inline void prefix ## _swap_all(struct prefix##_head *a,                 \
+TSAFE_MACRO void prefix ## _swap_all(struct prefix##_head *a,                 \
 				      struct prefix##_head *b)                 \
 {                                                                              \
 	typesafe_dlist_swap_all(&a->dh, &b->dh);                               \
 }                                                                              \
-macro_pure const type *prefix ## _const_first(const struct prefix##_head *h)   \
+TSAFE_PURE const type *prefix ## _const_first(const struct prefix##_head *h)   \
 {                                                                              \
 	const struct dlist_item *ditem = h->dh.hitem.next;                     \
 	if (ditem == &h->dh.hitem)                                             \
 		return NULL;                                                   \
 	return container_of(ditem, type, field.di);                            \
 }                                                                              \
-macro_pure const type *prefix ## _const_next(const struct prefix##_head *h,    \
+TSAFE_PURE const type *prefix ## _const_next(const struct prefix##_head *h,    \
 					     const type *item)	               \
 {                                                                              \
 	const struct dlist_item *ditem = &item->field.di;                      \
@@ -440,14 +457,14 @@ macro_pure const type *prefix ## _const_next(const struct prefix##_head *h,    \
 	return container_of(ditem->next, type, field.di);                      \
 }                                                                              \
 TYPESAFE_FIRST_NEXT(prefix, type)                                              \
-macro_pure const type *prefix ## _const_last(const struct prefix##_head *h)    \
+TSAFE_PURE const type *prefix ## _const_last(const struct prefix##_head *h)    \
 {                                                                              \
 	const struct dlist_item *ditem = h->dh.hitem.prev;                     \
 	if (ditem == &h->dh.hitem)                                             \
 		return NULL;                                                   \
 	return container_of(ditem, type, field.di);                            \
 }                                                                              \
-macro_pure const type *prefix ## _const_prev(const struct prefix##_head *h,    \
+TSAFE_PURE const type *prefix ## _const_prev(const struct prefix##_head *h,    \
 					     const type *item)	               \
 {                                                                              \
 	const struct dlist_item *ditem = &item->field.di;                      \
@@ -456,28 +473,28 @@ macro_pure const type *prefix ## _const_prev(const struct prefix##_head *h,    \
 	return container_of(ditem->prev, type, field.di);                      \
 }                                                                              \
 TYPESAFE_LAST_PREV(prefix, type)                                               \
-macro_pure type *prefix ## _next_safe(struct prefix##_head *h, type *item)     \
+TSAFE_PURE type *prefix ## _next_safe(struct prefix##_head *h, type *item)     \
 {                                                                              \
 	if (!item)                                                             \
 		return NULL;                                                   \
 	return prefix ## _next(h, item);                                       \
 }                                                                              \
-macro_pure type *prefix ## _prev_safe(struct prefix##_head *h, type *item)     \
+TSAFE_PURE type *prefix ## _prev_safe(struct prefix##_head *h, type *item)     \
 {                                                                              \
 	if (!item)                                                             \
 		return NULL;                                                   \
 	return prefix ## _prev(h, item);                                       \
 }                                                                              \
-macro_pure size_t prefix ## _count(const struct prefix##_head *h)              \
+TSAFE_PURE size_t prefix ## _count(const struct prefix##_head *h)              \
 {                                                                              \
 	return h->dh.count;                                                    \
 }                                                                              \
-macro_pure bool prefix ## _anywhere(const type *item)                          \
+TSAFE_PURE bool prefix ## _anywhere(const type *item)                          \
 {                                                                              \
 	const struct dlist_item *ditem = &item->field.di;                      \
 	return ditem->next && ditem->prev;                                     \
 }                                                                              \
-macro_pure bool prefix ## _member(const struct prefix##_head *h,               \
+TSAFE_PURE bool prefix ## _member(const struct prefix##_head *h,               \
 				  const type *item)                            \
 {                                                                              \
 	return typesafe_dlist_member(&h->dh, &item->field.di);                 \
@@ -513,22 +530,22 @@ MACRO_REQUIRE_SEMICOLON() /* end */
 
 #define DECLARE_HEAP(prefix, type, field, cmpfn)                               \
                                                                                \
-macro_inline void prefix ## _init(struct prefix##_head *h)                     \
+TSAFE_MACRO void prefix ## _init(struct prefix##_head *h)                     \
 {                                                                              \
 	memset(h, 0, sizeof(*h));                                              \
 }                                                                              \
-macro_inline void prefix ## _fini(struct prefix##_head *h)                     \
+TSAFE_MACRO void prefix ## _fini(struct prefix##_head *h)                     \
 {                                                                              \
 	assert(h->hh.count == 0);                                              \
 	memset(h, 0, sizeof(*h));                                              \
 }                                                                              \
-macro_inline int prefix ## __cmp(const struct heap_item *a,                    \
+TSAFE_MACRO int prefix ## __cmp(const struct heap_item *a,                    \
 		const struct heap_item *b)                                     \
 {                                                                              \
 	return cmpfn(container_of(a, type, field.hi),                          \
 			container_of(b, type, field.hi));                      \
 }                                                                              \
-macro_inline type *prefix ## _add(struct prefix##_head *h, type *item)         \
+TSAFE_MACRO type *prefix ## _add(struct prefix##_head *h, type *item)         \
 {                                                                              \
 	if (HEAP_RESIZE_TRESH_UP(h))                                           \
 		typesafe_heap_resize(&h->hh, true);                            \
@@ -537,7 +554,7 @@ macro_inline type *prefix ## _add(struct prefix##_head *h, type *item)         \
 	h->hh.count++;                                                         \
 	return NULL;                                                           \
 }                                                                              \
-macro_inline type *prefix ## _del(struct prefix##_head *h, type *item)         \
+TSAFE_MACRO type *prefix ## _del(struct prefix##_head *h, type *item)         \
 {                                                                              \
 	struct heap_item *other;                                               \
 	uint32_t index = item->field.hi.index;                                 \
@@ -552,7 +569,7 @@ macro_inline type *prefix ## _del(struct prefix##_head *h, type *item)         \
 		typesafe_heap_resize(&h->hh, false);                           \
 	return item;                                                           \
 }                                                                              \
-macro_inline type *prefix ## _pop(struct prefix##_head *h)                     \
+TSAFE_MACRO type *prefix ## _pop(struct prefix##_head *h)                     \
 {                                                                              \
 	struct heap_item *hitem, *other;                                       \
 	if (h->hh.count == 0)                                                  \
@@ -566,13 +583,13 @@ macro_inline type *prefix ## _pop(struct prefix##_head *h)                     \
 	return container_of(hitem, type, field.hi);                            \
 }                                                                              \
 TYPESAFE_SWAP_ALL_SIMPLE(prefix)                                               \
-macro_pure const type *prefix ## _const_first(const struct prefix##_head *h)   \
+TSAFE_PURE const type *prefix ## _const_first(const struct prefix##_head *h)   \
 {                                                                              \
 	if (h->hh.count == 0)                                                  \
 		return NULL;                                                   \
 	return container_of(h->hh.array[0], type, field.hi);                   \
 }                                                                              \
-macro_pure const type *prefix ## _const_next(const struct prefix##_head *h,    \
+TSAFE_PURE const type *prefix ## _const_next(const struct prefix##_head *h,    \
 					     const type *item)                 \
 {                                                                              \
 	uint32_t idx = item->field.hi.index + 1;                               \
@@ -581,17 +598,17 @@ macro_pure const type *prefix ## _const_next(const struct prefix##_head *h,    \
 	return container_of(h->hh.array[idx], type, field.hi);                 \
 }                                                                              \
 TYPESAFE_FIRST_NEXT(prefix, type)                                              \
-macro_pure type *prefix ## _next_safe(struct prefix##_head *h, type *item)     \
+TSAFE_PURE type *prefix ## _next_safe(struct prefix##_head *h, type *item)     \
 {                                                                              \
 	if (!item)                                                             \
 		return NULL;                                                   \
 	return prefix ## _next(h, item);                                       \
 }                                                                              \
-macro_pure size_t prefix ## _count(const struct prefix##_head *h)              \
+TSAFE_PURE size_t prefix ## _count(const struct prefix##_head *h)              \
 {                                                                              \
 	return h->hh.count;                                                    \
 }                                                                              \
-macro_pure bool prefix ## _member(const struct prefix##_head *h,               \
+TSAFE_PURE bool prefix ## _member(const struct prefix##_head *h,               \
 				  const type *item)                            \
 {                                                                              \
 	uint32_t idx = item->field.hi.index;                                   \
@@ -648,15 +665,15 @@ MACRO_REQUIRE_SEMICOLON() /* end */
 
 #define _DECLARE_SORTLIST(prefix, type, field, cmpfn_nuq, cmpfn_uq)            \
                                                                                \
-macro_inline void prefix ## _init(struct prefix##_head *h)                     \
+TSAFE_MACRO void prefix ## _init(struct prefix##_head *h)                     \
 {                                                                              \
 	memset(h, 0, sizeof(*h));                                              \
 }                                                                              \
-macro_inline void prefix ## _fini(struct prefix##_head *h)                     \
+TSAFE_MACRO void prefix ## _fini(struct prefix##_head *h)                     \
 {                                                                              \
 	memset(h, 0, sizeof(*h));                                              \
 }                                                                              \
-macro_inline type *prefix ## _add(struct prefix##_head *h, type *item)         \
+TSAFE_MACRO type *prefix ## _add(struct prefix##_head *h, type *item)         \
 {                                                                              \
 	struct ssort_item **np = &h->sh.first;                                 \
 	int c = 1;                                                             \
@@ -670,7 +687,7 @@ macro_inline type *prefix ## _add(struct prefix##_head *h, type *item)         \
 	h->sh.count++;                                                         \
 	return NULL;                                                           \
 }                                                                              \
-macro_inline const type *prefix ## _const_find_gteq(                           \
+TSAFE_MACRO const type *prefix ## _const_find_gteq(                           \
 		const struct prefix##_head *h, const type *item)               \
 {                                                                              \
 	const struct ssort_item *sitem = h->sh.first;                          \
@@ -680,7 +697,7 @@ macro_inline const type *prefix ## _const_find_gteq(                           \
 		sitem = sitem->next;                                           \
 	return container_of_null(sitem, type, field.si);                       \
 }                                                                              \
-macro_inline const type *prefix ## _const_find_lt(                             \
+TSAFE_MACRO const type *prefix ## _const_find_lt(                             \
 		const struct prefix##_head *h, const type *item)               \
 {                                                                              \
 	const struct ssort_item *prev = NULL, *sitem = h->sh.first;            \
@@ -692,7 +709,7 @@ macro_inline const type *prefix ## _const_find_lt(                             \
 }                                                                              \
 TYPESAFE_FIND_CMP(prefix, type)                                                \
 /* TODO: del_hint */                                                           \
-macro_inline type *prefix ## _del(struct prefix##_head *h, type *item)         \
+TSAFE_MACRO type *prefix ## _del(struct prefix##_head *h, type *item)         \
 {                                                                              \
 	struct ssort_item **iter = &h->sh.first;                               \
 	while (*iter && *iter != &item->field.si)                              \
@@ -704,7 +721,7 @@ macro_inline type *prefix ## _del(struct prefix##_head *h, type *item)         \
 	item->field.si.next = NULL;                                            \
 	return item;                                                           \
 }                                                                              \
-macro_inline type *prefix ## _pop(struct prefix##_head *h)                     \
+TSAFE_MACRO type *prefix ## _pop(struct prefix##_head *h)                     \
 {                                                                              \
 	struct ssort_item *sitem = h->sh.first;                                \
 	if (!sitem)                                                            \
@@ -714,18 +731,18 @@ macro_inline type *prefix ## _pop(struct prefix##_head *h)                     \
 	return container_of(sitem, type, field.si);                            \
 }                                                                              \
 TYPESAFE_SWAP_ALL_SIMPLE(prefix)                                               \
-macro_pure const type *prefix ## _const_first(const struct prefix##_head *h)   \
+TSAFE_PURE const type *prefix ## _const_first(const struct prefix##_head *h)   \
 {                                                                              \
 	return container_of_null(h->sh.first, type, field.si);                 \
 }                                                                              \
-macro_pure const type *prefix ## _const_next(const struct prefix##_head *h,    \
+TSAFE_PURE const type *prefix ## _const_next(const struct prefix##_head *h,    \
 					     const type *item)                 \
 {                                                                              \
 	const struct ssort_item *sitem = &item->field.si;                      \
 	return container_of_null(sitem->next, type, field.si);                 \
 }                                                                              \
 TYPESAFE_FIRST_NEXT(prefix, type)                                              \
-macro_pure type *prefix ## _next_safe(struct prefix##_head *h, type *item)     \
+TSAFE_PURE type *prefix ## _next_safe(struct prefix##_head *h, type *item)     \
 {                                                                              \
 	struct ssort_item *sitem;                                              \
 	if (!item)                                                             \
@@ -733,7 +750,7 @@ macro_pure type *prefix ## _next_safe(struct prefix##_head *h, type *item)     \
 	sitem = &item->field.si;                                               \
 	return container_of_null(sitem->next, type, field.si);                 \
 }                                                                              \
-macro_pure size_t prefix ## _count(const struct prefix##_head *h)              \
+TSAFE_PURE size_t prefix ## _count(const struct prefix##_head *h)              \
 {                                                                              \
 	return h->sh.count;                                                    \
 }                                                                              \
@@ -742,7 +759,7 @@ MACRO_REQUIRE_SEMICOLON() /* end */
 #define DECLARE_SORTLIST_UNIQ(prefix, type, field, cmpfn)                      \
 	_DECLARE_SORTLIST(prefix, type, field, cmpfn, cmpfn);                  \
 									       \
-macro_inline const type *prefix ## _const_find(const struct prefix##_head *h,  \
+TSAFE_MACRO const type *prefix ## _const_find(const struct prefix##_head *h,  \
 					       const type *item)               \
 {                                                                              \
 	const struct ssort_item *sitem = h->sh.first;                          \
@@ -759,7 +776,7 @@ TYPESAFE_MEMBER_VIA_FIND(prefix, type)                                         \
 MACRO_REQUIRE_SEMICOLON() /* end */
 
 #define DECLARE_SORTLIST_NONUNIQ(prefix, type, field, cmpfn)                   \
-macro_inline int _ ## prefix ## _cmp(const type *a, const type *b)             \
+TSAFE_MACRO int _ ## prefix ## _cmp(const type *a, const type *b)             \
 {                                                                              \
 	int cmpval = cmpfn(a, b);                                              \
 	if (cmpval)                                                            \
@@ -837,18 +854,18 @@ MACRO_REQUIRE_SEMICOLON() /* end */
 
 #define DECLARE_HASH(prefix, type, field, cmpfn, hashfn)                       \
                                                                                \
-macro_inline void prefix ## _init(struct prefix##_head *h)                     \
+TSAFE_MACRO void prefix ## _init(struct prefix##_head *h)                     \
 {                                                                              \
 	memset(h, 0, sizeof(*h));                                              \
 }                                                                              \
-macro_inline void prefix ## _fini(struct prefix##_head *h)                     \
+TSAFE_MACRO void prefix ## _fini(struct prefix##_head *h)                     \
 {                                                                              \
 	assert(h->hh.count == 0);                                              \
 	h->hh.minshift = 0;                                                    \
 	typesafe_hash_shrink(&h->hh);                                          \
 	memset(h, 0, sizeof(*h));                                              \
 }                                                                              \
-macro_inline type *prefix ## _add(struct prefix##_head *h, type *item)         \
+TSAFE_MACRO type *prefix ## _add(struct prefix##_head *h, type *item)         \
 {                                                                              \
 	h->hh.count++;                                                         \
 	if (!h->hh.tabshift || HASH_GROW_THRESHOLD(h->hh))                     \
@@ -870,7 +887,7 @@ macro_inline type *prefix ## _add(struct prefix##_head *h, type *item)         \
 	*np = &item->field.hi;                                                 \
 	return NULL;                                                           \
 }                                                                              \
-macro_inline const type *prefix ## _const_find(const struct prefix##_head *h,  \
+TSAFE_MACRO const type *prefix ## _const_find(const struct prefix##_head *h,  \
 					       const type *item)               \
 {                                                                              \
 	if (!h->hh.tabshift)                                                   \
@@ -887,7 +904,7 @@ macro_inline const type *prefix ## _const_find(const struct prefix##_head *h,  \
 	return NULL;                                                           \
 }                                                                              \
 TYPESAFE_FIND(prefix, type)                                                    \
-macro_inline type *prefix ## _del(struct prefix##_head *h, type *item)         \
+TSAFE_MACRO type *prefix ## _del(struct prefix##_head *h, type *item)         \
 {                                                                              \
 	if (!h->hh.tabshift)                                                   \
 		return NULL;                                                   \
@@ -906,7 +923,7 @@ macro_inline type *prefix ## _del(struct prefix##_head *h, type *item)         \
 		typesafe_hash_shrink(&h->hh);                                  \
 	return item;                                                           \
 }                                                                              \
-macro_inline type *prefix ## _pop(struct prefix##_head *h)                     \
+TSAFE_MACRO type *prefix ## _pop(struct prefix##_head *h)                     \
 {                                                                              \
 	uint32_t i;                                                            \
 	for (i = 0; i < HASH_SIZE(h->hh); i++)                                 \
@@ -922,7 +939,7 @@ macro_inline type *prefix ## _pop(struct prefix##_head *h)                     \
 	return NULL;                                                           \
 }                                                                              \
 TYPESAFE_SWAP_ALL_SIMPLE(prefix)                                               \
-macro_pure const type *prefix ## _const_first(const struct prefix##_head *h)   \
+TSAFE_PURE const type *prefix ## _const_first(const struct prefix##_head *h)   \
 {                                                                              \
 	uint32_t i;                                                            \
 	for (i = 0; i < HASH_SIZE(h->hh); i++)                                 \
@@ -930,7 +947,7 @@ macro_pure const type *prefix ## _const_first(const struct prefix##_head *h)   \
 			return container_of(h->hh.entries[i], type, field.hi); \
 	return NULL;                                                           \
 }                                                                              \
-macro_pure const type *prefix ## _const_next(const struct prefix##_head *h,    \
+TSAFE_PURE const type *prefix ## _const_next(const struct prefix##_head *h,    \
                                              const type *item)                 \
 {                                                                              \
 	const struct thash_item *hitem = &item->field.hi;                      \
@@ -943,17 +960,17 @@ macro_pure const type *prefix ## _const_next(const struct prefix##_head *h,    \
 	return NULL;                                                           \
 }                                                                              \
 TYPESAFE_FIRST_NEXT(prefix, type)                                              \
-macro_pure type *prefix ## _next_safe(struct prefix##_head *h, type *item)     \
+TSAFE_PURE type *prefix ## _next_safe(struct prefix##_head *h, type *item)     \
 {                                                                              \
 	if (!item)                                                             \
 		return NULL;                                                   \
 	return prefix ## _next(h, item);                                       \
 }                                                                              \
-macro_pure size_t prefix ## _count(const struct prefix##_head *h)              \
+TSAFE_PURE size_t prefix ## _count(const struct prefix##_head *h)              \
 {                                                                              \
 	return h->hh.count;                                                    \
 }                                                                              \
-macro_pure bool prefix ## _member(const struct prefix##_head *h,               \
+TSAFE_PURE bool prefix ## _member(const struct prefix##_head *h,               \
 				  const type *item)                            \
 {                                                                              \
 	if (!h->hh.tabshift)                                                   \
@@ -1011,30 +1028,30 @@ MACRO_REQUIRE_SEMICOLON() /* end */
 
 #define _DECLARE_SKIPLIST(prefix, type, field, cmpfn_nuq, cmpfn_uq)            \
                                                                                \
-macro_inline void prefix ## _init(struct prefix##_head *h)                     \
+TSAFE_MACRO void prefix ## _init(struct prefix##_head *h)                     \
 {                                                                              \
 	memset(h, 0, sizeof(*h));                                              \
 	h->sh.hitem.next[SKIPLIST_OVERFLOW] = (struct sskip_item *)            \
 		((uintptr_t)h->sh.overflow | 1);                               \
 }                                                                              \
-macro_inline void prefix ## _fini(struct prefix##_head *h)                     \
+TSAFE_MACRO void prefix ## _fini(struct prefix##_head *h)                     \
 {                                                                              \
 	memset(h, 0, sizeof(*h));                                              \
 }                                                                              \
-macro_inline type *prefix ## _add(struct prefix##_head *h, type *item)         \
+TSAFE_MACRO type *prefix ## _add(struct prefix##_head *h, type *item)         \
 {                                                                              \
 	struct sskip_item *si;                                                 \
 	si = typesafe_skiplist_add(&h->sh, &item->field.si, cmpfn_uq);         \
 	return container_of_null(si, type, field.si);                          \
 }                                                                              \
-macro_inline const type *prefix ## _const_find_gteq(                           \
+TSAFE_MACRO const type *prefix ## _const_find_gteq(                           \
 		const struct prefix##_head *h, const type *item)               \
 {                                                                              \
 	const struct sskip_item *sitem = typesafe_skiplist_find_gteq(&h->sh,   \
 			&item->field.si, cmpfn_nuq);                           \
 	return container_of_null(sitem, type, field.si);                       \
 }                                                                              \
-macro_inline const type *prefix ## _const_find_lt(                             \
+TSAFE_MACRO const type *prefix ## _const_find_lt(                             \
 		const struct prefix##_head *h, const type *item)               \
 {                                                                              \
 	const struct sskip_item *sitem = typesafe_skiplist_find_lt(&h->sh,     \
@@ -1042,18 +1059,18 @@ macro_inline const type *prefix ## _const_find_lt(                             \
 	return container_of_null(sitem, type, field.si);                       \
 }                                                                              \
 TYPESAFE_FIND_CMP(prefix, type)                                                \
-macro_inline type *prefix ## _del(struct prefix##_head *h, type *item)         \
+TSAFE_MACRO type *prefix ## _del(struct prefix##_head *h, type *item)         \
 {                                                                              \
 	struct sskip_item *sitem = typesafe_skiplist_del(&h->sh,               \
 			&item->field.si, cmpfn_uq);                            \
 	return container_of_null(sitem, type, field.si);                       \
 }                                                                              \
-macro_inline type *prefix ## _pop(struct prefix##_head *h)                     \
+TSAFE_MACRO type *prefix ## _pop(struct prefix##_head *h)                     \
 {                                                                              \
 	struct sskip_item *sitem = typesafe_skiplist_pop(&h->sh);              \
 	return container_of_null(sitem, type, field.si);                       \
 }                                                                              \
-macro_inline void prefix ## _swap_all(struct prefix##_head *a,                 \
+TSAFE_MACRO void prefix ## _swap_all(struct prefix##_head *a,                 \
 				      struct prefix##_head *b)                 \
 {                                                                              \
 	struct prefix##_head tmp = *a;                                         \
@@ -1064,25 +1081,25 @@ macro_inline void prefix ## _swap_all(struct prefix##_head *a,                 \
 	b->sh.hitem.next[SKIPLIST_OVERFLOW] = (struct sskip_item *)            \
 		((uintptr_t)b->sh.overflow | 1);                               \
 }                                                                              \
-macro_pure const type *prefix ## _const_first(const struct prefix##_head *h)   \
+TSAFE_PURE const type *prefix ## _const_first(const struct prefix##_head *h)   \
 {                                                                              \
 	const struct sskip_item *first = h->sh.hitem.next[0];                  \
 	return container_of_null(first, type, field.si);                       \
 }                                                                              \
-macro_pure const type *prefix ## _const_next(const struct prefix##_head *h,    \
+TSAFE_PURE const type *prefix ## _const_next(const struct prefix##_head *h,    \
 					     const type *item)		       \
 {                                                                              \
 	const struct sskip_item *next = item->field.si.next[0];                \
 	return container_of_null(next, type, field.si);                        \
 }                                                                              \
 TYPESAFE_FIRST_NEXT(prefix, type)                                              \
-macro_pure type *prefix ## _next_safe(struct prefix##_head *h, type *item)     \
+TSAFE_PURE type *prefix ## _next_safe(struct prefix##_head *h, type *item)     \
 {                                                                              \
 	struct sskip_item *next;                                               \
 	next = item ? item->field.si.next[0] : NULL;                           \
 	return container_of_null(next, type, field.si);                        \
 }                                                                              \
-macro_pure size_t prefix ## _count(const struct prefix##_head *h)              \
+TSAFE_PURE size_t prefix ## _count(const struct prefix##_head *h)	\
 {                                                                              \
 	return h->sh.count;                                                    \
 }                                                                              \
@@ -1092,13 +1109,13 @@ MACRO_REQUIRE_SEMICOLON() /* end */
 	_PREDECL_SKIPLIST(prefix)
 #define DECLARE_SKIPLIST_UNIQ(prefix, type, field, cmpfn)                      \
 									       \
-macro_inline int prefix ## __cmp(const struct sskip_item *a,                   \
+TSAFE_MACRO int prefix ## __cmp(const struct sskip_item *a,                   \
 		const struct sskip_item *b)                                    \
 {                                                                              \
 	return cmpfn(container_of(a, type, field.si),                          \
 			container_of(b, type, field.si));                      \
 }                                                                              \
-macro_inline const type *prefix ## _const_find(const struct prefix##_head *h,  \
+TSAFE_MACRO const type *prefix ## _const_find(const struct prefix##_head *h,  \
 					       const type *item)               \
 {                                                                              \
 	const struct sskip_item *sitem = typesafe_skiplist_find(&h->sh,        \
@@ -1116,13 +1133,13 @@ MACRO_REQUIRE_SEMICOLON() /* end */
 	_PREDECL_SKIPLIST(prefix)
 #define DECLARE_SKIPLIST_NONUNIQ(prefix, type, field, cmpfn)                   \
                                                                                \
-macro_inline int prefix ## __cmp(const struct sskip_item *a,                   \
+TSAFE_MACRO int prefix ## __cmp(const struct sskip_item *a,                   \
 		const struct sskip_item *b)                                    \
 {                                                                              \
 	return cmpfn(container_of(a, type, field.si),                          \
 			container_of(b, type, field.si));                      \
 }                                                                              \
-macro_inline int prefix ## __cmp_uq(const struct sskip_item *a,                \
+TSAFE_MACRO int prefix ## __cmp_uq(const struct sskip_item *a,                \
 		const struct sskip_item *b)                                    \
 {                                                                              \
 	int cmpval = cmpfn(container_of(a, type, field.si),                    \
