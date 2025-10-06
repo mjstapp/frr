@@ -39,9 +39,14 @@ typedef void (*route_table_destroy_node_func_t)(route_table_delegate_t *,
 						struct route_table *,
 						struct route_node *);
 
+typedef void (*route_table_cmp_node_func_t)(struct route_table *table,
+					    const struct route_node *node1,
+					    const struct route_node *node2);
+
 struct route_table_delegate_t_ {
 	route_table_create_node_func_t create_node;
 	route_table_destroy_node_func_t destroy_node;
+	route_table_cmp_node_func_t cmp_node;
 };
 
 PREDECL_HASH(rn_hash_node);
@@ -187,12 +192,20 @@ extern struct route_node *route_top(struct route_table *table);
 extern struct route_node *route_next(struct route_node *node);
 extern struct route_node *route_next_until(struct route_node *node,
 					   const struct route_node *limit);
+struct route_node *route_node_get_node(struct route_table *table,
+				       const struct route_node *search);
 extern struct route_node *route_node_get(struct route_table *table,
 					 union prefixconstptr pu);
+struct route_node *route_node_lookup_node(struct route_table *table,
+					  const struct route_node *rn);
+struct route_node *route_node_lookup_node_maynull(struct route_table *table,
+						  const struct route_node *rn);
 extern struct route_node *route_node_lookup(struct route_table *table,
 					    union prefixconstptr pu);
 extern struct route_node *route_node_lookup_maynull(struct route_table *table,
 						    union prefixconstptr pu);
+struct route_node *route_node_match_node(struct route_table *table,
+					 const struct route_node *rn);
 extern struct route_node *route_node_match(struct route_table *table,
 					   union prefixconstptr pu);
 
