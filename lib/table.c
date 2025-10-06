@@ -19,6 +19,7 @@ DEFINE_MTYPE(LIB, ROUTE_NODE, "Route node");
 
 static void route_table_free(struct route_table *);
 
+/* Route-node hash functions */
 static int route_table_hash_cmp(const struct route_node *a,
 				const struct route_node *b)
 {
@@ -30,10 +31,17 @@ static int rt_tree_cmp(const struct route_node *a, const struct route_node *b)
 	return prefix_cmp(&a->p, &b->p);
 }
 
-DECLARE_HASH(rn_hash_node, struct route_node, nodehash, route_table_hash_cmp,
-	     prefix_hash_key);
-
 DECLARE_RBTREE_UNIQ(rn_tree, struct route_node, rbitem, rt_tree_cmp);
+
+static unsigned int route_table_hash_key(const void *node)
+{
+	const struct route_node *a = node;
+
+	return prefix_hash_key(&(a->p));
+}
+
+DECLARE_HASH(rn_hash_node, struct route_node, nodehash, route_table_hash_cmp,
+	     route_table_hash_key);
 
 /*
  * route_table_init_with_delegate
@@ -223,24 +231,19 @@ static void set_link(struct route_node *node, struct route_node *new)
 }
 
 /* Find matched prefix. */
-struct route_node *route_node_match(struct route_table *table,
-				    union prefixconstptr pu)
+struct route_node *route_node_match_node(struct route_table *table,
+					 const struct route_node *rn)
 {
-	const struct prefix *p = pu.p;
+	const struct prefix *p = &(rn->p);
 	struct route_node *node;
 	struct route_node *matched;
-	struct route_node rn;
 
 	matched = NULL;
 	node = table->top;
 
 	/* For unique mode, just do a lookup */
 	if (table->unique_mode) {
-		memset(&rn, 0, sizeof(rn));
-		prefix_copy(&rn.p, pu.p);
-		apply_mask(&rn.p);
-
-		matched = rn_tree_find(&table->tree, &rn);
+		matched = rn_tree_find(&table->tree, rn);
 		if (matched && matched->info == NULL)
 			matched = NULL;
 
@@ -249,8 +252,8 @@ struct route_node *route_node_match(struct route_table *table,
 
 	/* Walk down tree.  If there is matched route then store it to
 	   matched. */
-	while (node && node->p.prefixlen <= p->prefixlen
-	       && prefix_match(&node->p, p)) {
+	while (node && node->p.prefixlen <= p->prefixlen &&
+	       prefix_match(&node->p, p)) {
 		if (node->info)
 			matched = node;
 
@@ -268,66 +271,105 @@ done:
 	return NULL;
 }
 
+/* Find matched prefix. */
+struct route_node *route_node_match(struct route_table *table,
+				    union prefixconstptr pu)
+{
+	struct route_node *matched;
+	struct route_node rn = {};
+
+	prefix_copy(&rn.p, pu.p);
+
+	matched = route_node_match_node(table, &rn);
+
+	/* The copy needs to be freed */
+	if (rn.p.family == AF_FLOWSPEC)
+		prefix_flowspec_ptr_free(&rn.p);
+
+	return matched;
+}
+
+/* Lookup node.  Return NULL when we can't find route. */
+struct route_node *route_node_lookup_node(struct route_table *table,
+					  const struct route_node *rn)
+{
+	struct route_node *node;
+
+	if (table->unique_mode)
+		node = rn_tree_find(&table->tree, rn);
+	else
+		node = rn_hash_node_find(&table->hash, rn);
+
+	return (node && node->info) ? route_lock_node(node) : NULL;
+}
+
+/* Lookup node.  Return NULL when we can't find route. */
+struct route_node *route_node_lookup_node_maynull(struct route_table *table,
+						  const struct route_node *rn)
+{
+	struct route_node *node;
+
+	if (table->unique_mode)
+		node = rn_tree_find(&table->tree, rn);
+	else
+		node = rn_hash_node_find(&table->hash, rn);
+
+	return (node ? route_lock_node(node) : NULL);
+}
+
 /* Lookup same prefix node.  Return NULL when we can't find route. */
 struct route_node *route_node_lookup(struct route_table *table,
 				     union prefixconstptr pu)
 {
-	struct route_node rn, *node;
+	struct route_node rn = {}, *node;
+
 	prefix_copy(&rn.p, pu.p);
 	apply_mask(&rn.p);
 
-	if (table->unique_mode)
-		node = rn_tree_find(&table->tree, &rn);
-	else
-		node = rn_hash_node_find(&table->hash, &rn);
-	return (node && node->info) ? route_lock_node(node) : NULL;
+	node = route_node_lookup_node(table, &rn);
+
+	/* The copy needs to be freed */
+	if (rn.p.family == AF_FLOWSPEC)
+		prefix_flowspec_ptr_free(&rn.p);
+
+	return node;
 }
 
 /* Lookup same prefix node.  Return NULL when we can't find route. */
 struct route_node *route_node_lookup_maynull(struct route_table *table,
 					     union prefixconstptr pu)
 {
-	struct route_node rn, *node;
+	struct route_node rn = {}, *node;
+
 	prefix_copy(&rn.p, pu.p);
 	apply_mask(&rn.p);
 
-	if (table->unique_mode)
-		node = rn_tree_find(&table->tree, &rn);
-	else
-		node = rn_hash_node_find(&table->hash, &rn);
-	return node ? route_lock_node(node) : NULL;
+	node = route_node_lookup_node_maynull(table, &rn);
+
+	/* The copy needs to be freed */
+	if (rn.p.family == AF_FLOWSPEC)
+		prefix_flowspec_ptr_free(&rn.p);
+
+	return node;
 }
 
 /* Add node to routing table. */
-struct route_node *route_node_get(struct route_table *table,
-				  union prefixconstptr pu)
+struct route_node *route_node_get_node(struct route_table *table,
+				       const struct route_node *search)
 {
-	if (frrtrace_enabled(frr_libfrr, route_node_get)) {
-		char buf[PREFIX2STR_BUFFER];
-		prefix2str(pu, buf, sizeof(buf));
-		frrtrace(2, frr_libfrr, route_node_get, table, buf);
-	}
-
-	struct route_node search;
-	struct prefix *p = &search.p;
-
-	prefix_copy(p, pu.p);
-	apply_mask(p);
 
 	struct route_node *new;
 	struct route_node *node;
 	struct route_node *match;
-	uint16_t prefixlen = p->prefixlen;
-	const uint8_t *prefix = &p->u.prefix;
+	const struct prefix *p = &(search->p);
+	uint16_t prefixlen = search->p.prefixlen;
+	const uint8_t *prefix = &(search->p.u.prefix);
 
 	/* For unique-mode, just add an entry directly */
 	if (table->unique_mode) {
-		node = rn_tree_find(&table->tree, &search);
-		if (node && node->info) {
-			if (p->family == AF_FLOWSPEC)
-				prefix_flowspec_ptr_free(p);
+		node = rn_tree_find(&table->tree, search);
+		if (node && node->info)
 			return route_lock_node(node);
-		}
 
 		new = route_node_new(table);
 		prefix_copy(&new->p, p);
@@ -341,23 +383,17 @@ struct route_node *route_node_get(struct route_table *table,
 	}
 
 	/* LPM matching table starts here, with a hash lookup */
-	node = rn_hash_node_find(&table->hash, &search);
-	if (node && node->info) {
-		if (p->family == AF_FLOWSPEC)
-			prefix_flowspec_ptr_free(p);
+	node = rn_hash_node_find(&table->hash, search);
+	if (node && node->info)
 		return route_lock_node(node);
-	}
 
 	match = NULL;
 	node = table->top;
 	while (node && node->p.prefixlen <= prefixlen
 	       && prefix_match(&node->p, p)) {
-		if (node->p.prefixlen == prefixlen) {
-			if (p->family == AF_FLOWSPEC)
-				prefix_flowspec_ptr_free(p);
-
+		if (node->p.prefixlen == prefixlen)
 			return route_lock_node(node);
-		}
+
 		match = node;
 		node = node->link[prefix_bit(prefix, node->p.prefixlen)];
 	}
@@ -393,10 +429,33 @@ done:
 	table->count++;
 	route_lock_node(new);
 
+	return new;
+}
+
+/* Add node to routing table. */
+struct route_node *route_node_get(struct route_table *table,
+				  union prefixconstptr pu)
+{
+	if (frrtrace_enabled(frr_libfrr, route_node_get)) {
+		char buf[PREFIX2STR_BUFFER];
+		prefix2str(pu, buf, sizeof(buf));
+		frrtrace(2, frr_libfrr, route_node_get, table, buf);
+	}
+
+	struct route_node search = {};
+	struct prefix *p = &search.p;
+	struct route_node *node;
+
+	prefix_copy(p, pu.p);
+	apply_mask(p);
+
+	node = route_node_get_node(table, &search);
+
+	/* The copy needs to be freed */
 	if (p->family == AF_FLOWSPEC)
 		prefix_flowspec_ptr_free(p);
 
-	return new;
+	return node;
 }
 
 /* Delete node from the routing table. */
