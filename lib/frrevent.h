@@ -224,6 +224,7 @@ extern void _event_execute(const struct xref_eventsched *xref,
 			   struct event **eref);
 
 extern void event_cancel(struct event **event);
+extern void event_xancel(struct event_loop *m, struct event **eptr);
 extern void event_cancel_async(struct event_loop *m, struct event **eptr,
 			       void *data);
 /* Cancel ready tasks with an arg matching 'arg' */

@@ -1974,24 +1974,30 @@ void event_cancel_event_ready(struct event_loop *m, void *arg)
  *
  * MT-Unsafe
  *
+ * @param event loop
  * @param thread task to cancel
  */
 void event_cancel(struct event **event)
 {
-	struct event_loop *master;
-
 	if (event == NULL || *event == NULL)
 		return;
 
-	master = (*event)->master;
+	event_xancel((*event)->master, event);
+}
 
-	frrtrace(9, frr_libfrr, event_cancel, master->name, (*event)->xref->funcname,
-		 (*event)->xref->xref.file, (*event)->xref->xref.line, NULL, (*event)->u.fd,
-		 (*event)->u.val, (*event)->arg, (*event)->u.sands.tv_sec);
-
+void event_xancel(struct event_loop *master, struct event **event)
+{
 	assert(master->owner == pthread_self());
 
 	frr_with_mutex (&master->mtx) {
+		if (event == NULL || *event == NULL)
+			return;
+
+		frrtrace(9, frr_libfrr, event_cancel, master, (*event)->xref->funcname,
+			 (*event)->xref->xref.file, (*event)->xref->xref.line, NULL,
+			 (*event)->u.fd, (*event)->u.val, (*event)->arg,
+			 (*event)->u.sands.tv_sec);
+
 		struct cancel_req *cr =
 			XCALLOC(MTYPE_TMP, sizeof(struct cancel_req));
 		cr->event = *event;
