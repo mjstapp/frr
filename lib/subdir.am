@@ -36,6 +36,7 @@ lib_libfrr_la_SOURCES = \
 	lib/filter_nb.c \
 	lib/flex_algo.c \
 	lib/frrcu.c \
+	lib/frrhist.c \
 	lib/frrlua.c \
 	lib/frrscript.c \
 	lib/frr_pthread.c \
@@ -224,6 +225,7 @@ nobase_pkginclude_HEADERS += \
 	lib/flex_algo.h \
 	lib/freebsd-queue.h \
 	lib/frrdistance.h \
+	lib/frrhist.h \
 	lib/frrlua.h \
 	lib/frrscript.h \
 	lib/frr_pthread.h \
