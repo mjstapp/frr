@@ -284,7 +284,7 @@ static int frr_json_obj_to_vty(struct vty *vty, struct json_object *jobj,
 	 */
 	if (jtype == json_type_object) {
 		lhtable = json_object_get_object(jobj);
-		lhentry = lh_table_head(lhtable);
+		lhentry = lhtable->head;
 		while (lhentry) {
 			jval = (struct json_object *)lh_entry_v(lhentry);
 			key = (char *)lh_entry_k(lhentry);
@@ -326,14 +326,14 @@ static int frr_json_obj_to_vty(struct vty *vty, struct json_object *jobj,
 			if (CHECK_FLAG(child_flags, FRR_JSON_OPEN)) {
 				/* Recurse into child */
 				frr_json_obj_to_vty(vty, jval, pb, level + 1, jflags);
-				lhentry = lh_entry_next(lhentry);
+				lhentry = lhentry->next;
 			} else if (CHECK_FLAG(child_flags, FRR_JSON_CLOSED)) {
 				/* Recurse into child */
 				frr_json_obj_to_vty(vty, jval, pb, level + 1, jflags);
 
 				/* Remove child after output */
 				lh_table_delete_entry(lhtable, lhentry);
-				lhentry = lh_table_head(lhtable);
+				lhentry = lhtable->head;
 			} else {
 				/* Flush any pending output */
 				if (!pb_reset) {
@@ -348,7 +348,7 @@ static int frr_json_obj_to_vty(struct vty *vty, struct json_object *jobj,
 
 				/* Remove child after output */
 				lh_table_delete_entry(lhtable, lhentry);
-				lhentry = lh_table_head(lhtable);
+				lhentry = lhtable->head;
 			}
 		}
 
@@ -518,8 +518,8 @@ static void vty_json_dump_helper(struct vty *vty, struct json_object *jobj, int 
 	/* Iterate through the children of 'jobj', recurse into collections. */
 	if (jtype == json_type_object) {
 		lhtable = json_object_get_object(jobj);
-		lhentry = lh_table_head(lhtable);
-		for (; lhentry; lhentry = lh_entry_next(lhentry)) {
+		lhentry = lhtable->head;
+		for (; lhentry; lhentry = lhentry->next) {
 			jval = (struct json_object *)lh_entry_v(lhentry);
 			key = (char *)lh_entry_k(lhentry);
 
