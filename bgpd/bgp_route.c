@@ -107,8 +107,8 @@ static bool bgp_attr_nexthop_same(const struct attr *attr1, const struct attr *a
 
 DEFINE_MTYPE_STATIC(BGPD, BGP_EOIU_MARKER_INFO, "BGP EOIU Marker info");
 DEFINE_MTYPE_STATIC(BGPD, BGP_METAQ, "BGP MetaQ");
-/* Memory for batched clearing of peers from the RIB */
-DEFINE_MTYPE(BGPD, CLEARING_BATCH, "Clearing batch");
+/* Memory for batched processing in the BGP RIB */
+DEFINE_MTYPE(BGPD, BGP_RIB_BATCH, "Rib batch");
 
 DEFINE_HOOK(bgp_snmp_update_stats,
 	    (struct bgp_dest *rn, struct bgp_path_info *pi, bool added),
@@ -146,7 +146,7 @@ static const struct message bgp_pmsi_tnltype_str[] = {
 #define VRFID_NONE_STR "-"
 #define SOFT_RECONFIG_TASK_MAX_PREFIX 25000
 
-static int clear_batch_rib_helper(struct bgp_clearing_info *cinfo);
+static int clear_batch_rib_helper(struct bgp_rib_batch_info *cinfo);
 static void bgp_gr_start_tier2_timer_if_required(struct bgp *bgp, afi_t afi, safi_t safi);
 
 /*
@@ -7335,7 +7335,7 @@ static void clearing_clear_one_pi(struct bgp_table *table, struct bgp_dest *dest
  * may be iterating at two levels, so we may need to capture two levels of context
  * or keying data.
  */
-static void set_clearing_resume_info(struct bgp_clearing_info *cinfo,
+static void set_clearing_resume_info(struct bgp_rib_batch_info *cinfo,
 				     const struct bgp_table *table,
 				     const struct prefix *p, bool inner_p)
 {
@@ -7344,13 +7344,13 @@ static void set_clearing_resume_info(struct bgp_clearing_info *cinfo,
 			   inner_p ? "inner " : "", afi2str(table->afi),
 			   safi2str(table->safi), p);
 
-	SET_FLAG(cinfo->flags, BGP_CLEARING_INFO_FLAG_RESUME);
+	SET_FLAG(cinfo->flags, BGP_RIB_BATCH_INFO_FLAG_RESUME);
 
 	if (inner_p) {
 		cinfo->inner_afi = table->afi;
 		cinfo->inner_safi = table->safi;
 		memcpy(&cinfo->inner_pfx, p, sizeof(struct prefix));
-		SET_FLAG(cinfo->flags, BGP_CLEARING_INFO_FLAG_INNER);
+		SET_FLAG(cinfo->flags, BGP_RIB_BATCH_INFO_FLAG_INNER);
 	} else {
 		cinfo->last_afi = table->afi;
 		cinfo->last_safi = table->safi;
@@ -7364,7 +7364,7 @@ static void set_clearing_resume_info(struct bgp_clearing_info *cinfo,
  * for the VPN safis.
  */
 static struct bgp_dest *clearing_dest_helper(struct bgp_table *table,
-					     struct bgp_clearing_info *cinfo,
+					     struct bgp_rib_batch_info *cinfo,
 					     bool inner_p)
 {
 	struct bgp_dest *dest = NULL;
@@ -7373,12 +7373,12 @@ static struct bgp_dest *clearing_dest_helper(struct bgp_table *table,
 	char buf[PREFIX_STRLEN];
 
 	/* Is this a call for the outer/RD table of a VPN safi? */
-	outer_level_p = (CHECK_FLAG(cinfo->flags, BGP_CLEARING_INFO_FLAG_INNER) && !inner_p);
+	outer_level_p = (CHECK_FLAG(cinfo->flags, BGP_RIB_BATCH_INFO_FLAG_INNER) && !inner_p);
 
 	/* Iterate at start of table, or resume using "inner" or "outer" (RD) prefix */
 	dest = bgp_table_top(table);
 
-	if (CHECK_FLAG(cinfo->flags, BGP_CLEARING_INFO_FLAG_RESUME)) {
+	if (CHECK_FLAG(cinfo->flags, BGP_RIB_BATCH_INFO_FLAG_RESUME)) {
 		/* We're resuming an in-progress iteration. There are a couple of cases:
 		 * 1. we're resuming in an non-VPN afi/safi; we'll look to locate the
 		 *    closest prefix _after_ the prefix we saved.
@@ -7386,7 +7386,7 @@ static struct bgp_dest *clearing_dest_helper(struct bgp_table *table,
 		 *    the RD in the "outer" table, and then a second time to locate
 		 *    the closest prefix _after_ the "inner" prefix within the RD table.
 		 */
-		if (inner_p && CHECK_FLAG(cinfo->flags, BGP_CLEARING_INFO_FLAG_INNER))
+		if (inner_p && CHECK_FLAG(cinfo->flags, BGP_RIB_BATCH_INFO_FLAG_INNER))
 			pfx = &(cinfo->inner_pfx);
 		else
 			pfx = &(cinfo->last_pfx);
@@ -7411,8 +7411,8 @@ static struct bgp_dest *clearing_dest_helper(struct bgp_table *table,
 					 * so we start from the top of
 					 * the new RD's inner table.
 					 */
-					UNSET_FLAG(cinfo->flags, (BGP_CLEARING_INFO_FLAG_INNER |
-								  BGP_CLEARING_INFO_FLAG_RESUME));
+					UNSET_FLAG(cinfo->flags, (BGP_RIB_BATCH_INFO_FLAG_INNER |
+								  BGP_RIB_BATCH_INFO_FLAG_RESUME));
 				}
 			} else {
 				/* Normal prefix: look for next prefix */
@@ -7449,7 +7449,7 @@ static struct bgp_dest *clearing_dest_helper(struct bgp_table *table,
 static void clear_dests_callback(struct event *event)
 {
 	int ret;
-	struct bgp_clearing_info *cinfo = EVENT_ARG(event);
+	struct bgp_rib_batch_info *cinfo = EVENT_ARG(event);
 
 	/* Begin, or continue, work */
 	ret = clear_batch_rib_helper(cinfo);
@@ -7467,7 +7467,7 @@ static void clear_dests_callback(struct event *event)
  * examined, and return when reaching the limit. Capture "last" info about the
  * last dest we process so we can resume later.
  */
-static int walk_batch_table_helper(struct bgp_clearing_info *cinfo,
+static int walk_batch_table_helper(struct bgp_rib_batch_info *cinfo,
 				   struct bgp_table *table, bool inner_p)
 {
 	int ret = 0;
@@ -7480,8 +7480,8 @@ static int walk_batch_table_helper(struct bgp_clearing_info *cinfo,
 	dest = clearing_dest_helper(table, cinfo, inner_p);
 
 	/* Reset flags, now that we've used the "resume" info */
-	UNSET_FLAG(cinfo->flags, (BGP_CLEARING_INFO_FLAG_RESUME |
-				  BGP_CLEARING_INFO_FLAG_INNER));
+	UNSET_FLAG(cinfo->flags, (BGP_RIB_BATCH_INFO_FLAG_RESUME |
+				  BGP_RIB_BATCH_INFO_FLAG_INNER));
 
 	if (BGP_DEBUG(neighbor_events, NEIGHBOR_EVENTS_DETAIL))
 		zlog_debug("%s: table %s/%s, dest %pBD", __func__, afi2str(table->afi),
@@ -7532,7 +7532,7 @@ static int walk_batch_table_helper(struct bgp_clearing_info *cinfo,
 			}
 		}
 
-		if (cinfo->curr_counter >= bm->peer_clearing_batch_max_dests) {
+		if (cinfo->curr_counter >= bm->rib_batch_max_dests) {
 			/* Capture info about last dest seen and break */
 			if (BGP_DEBUG(neighbor_events, NEIGHBOR_EVENTS_DETAIL))
 				zlog_debug("%s: %s/%s: pfx %pFX reached limit %u", __func__,
@@ -7566,7 +7566,7 @@ static int walk_batch_table_helper(struct bgp_clearing_info *cinfo,
  * dests that are affected by the peers in the batch, enqueue the dests for
  * async processing.
  */
-static int clear_batch_rib_helper(struct bgp_clearing_info *cinfo)
+static int clear_batch_rib_helper(struct bgp_rib_batch_info *cinfo)
 {
 	int ret = 0;
 	afi_t afi;
@@ -7578,7 +7578,7 @@ static int clear_batch_rib_helper(struct bgp_clearing_info *cinfo)
 	char pbuf[PREFIX_STRLEN];
 
 	/* Maybe resume afi/safi iteration */
-	if (CHECK_FLAG(cinfo->flags, BGP_CLEARING_INFO_FLAG_RESUME)) {
+	if (CHECK_FLAG(cinfo->flags, BGP_RIB_BATCH_INFO_FLAG_RESUME)) {
 		afi = cinfo->last_afi;
 		safi = cinfo->last_safi;
 		resume_str = "resuming";
@@ -7605,7 +7605,7 @@ static int clear_batch_rib_helper(struct bgp_clearing_info *cinfo)
 				table = cinfo->bgp->rib[afi][safi];
 				if (!table) {
 					/* Invalid table: don't use 'resume' info */
-					UNSET_FLAG(cinfo->flags, BGP_CLEARING_INFO_FLAG_RESUME);
+					UNSET_FLAG(cinfo->flags, BGP_RIB_BATCH_INFO_FLAG_RESUME);
 					continue;
 				}
 
@@ -7637,7 +7637,7 @@ static int clear_batch_rib_helper(struct bgp_clearing_info *cinfo)
 						 * it's no longer valid, reset resume info.
 						 */
 						UNSET_FLAG(cinfo->flags,
-							   BGP_CLEARING_INFO_FLAG_RESUME);
+							   BGP_RIB_BATCH_INFO_FLAG_RESUME);
 						continue;
 					}
 
@@ -7675,7 +7675,7 @@ static int clear_batch_rib_helper(struct bgp_clearing_info *cinfo)
 			/* We've finished with a table: ensure we don't try to use stale
 			 * resume info.
 			 */
-			UNSET_FLAG(cinfo->flags, BGP_CLEARING_INFO_FLAG_RESUME);
+			UNSET_FLAG(cinfo->flags, BGP_RIB_BATCH_INFO_FLAG_RESUME);
 		}
 
 		/* Return immediately, otherwise the 'ret' state will be overwritten
@@ -7698,7 +7698,7 @@ static int clear_batch_rib_helper(struct bgp_clearing_info *cinfo)
  * Identify prefixes that need to be cleared for a batch of peers in 'cinfo'.
  * The actual clearing processing will be done async...
  */
-void bgp_clear_route_batch(struct bgp_clearing_info *cinfo)
+void bgp_clear_route_batch(struct bgp_rib_batch_info *cinfo)
 {
 	int ret;
 

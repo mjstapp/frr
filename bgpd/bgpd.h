@@ -60,8 +60,8 @@ DECLARE_HOOK(bgp_hook_config_write_vrf, (struct vty *vty, struct vrf *vrf),
 
 /* Max number of peers to process without rescheduling */
 #define BGP_CONN_ERROR_DEQUEUE_MAX 10
-/* Limit the number of clearing dests we'll process per callback */
-#define BGP_CLEARING_BATCH_MAX_DESTS 100
+/* Limit the number of batched rib dests we'll process per callback */
+#define BGP_RIB_BATCH_MAX_DESTS 100
 
 struct update_subgroup;
 struct bpacket;
@@ -239,15 +239,15 @@ struct bgp_master {
 	/* To preserve ordering of processing of L2 VNIs in BGP */
 	struct zebra_l2_vni_head zebra_l2_vni_head;
 
-	/* ID value for peer clearing batches */
-	uint32_t peer_clearing_batch_id;
+	/* ID value for rib processing batches */
+	uint32_t rib_batch_id;
 
 	/* Limits for batched peer clearing code:
 	 * Max number of errored peers to process without rescheduling
 	 */
 	uint32_t peer_conn_errs_dequeue_limit;
-	/* Limit the number of clearing dests we'll process per callback */
-	uint32_t peer_clearing_batch_max_dests;
+	/* Limit the number of rib dests we'll process per batch callback */
+	uint32_t rib_batch_max_dests;
 
 	QOBJ_FIELDS;
 };
@@ -500,22 +500,22 @@ PREDECL_RBTREE_UNIQ(bgp_mplsvpn_nh_label_bind_cache);
 PREDECL_DLIST(bgp_peer_conn_errlist);
 
 /* List of info about peers that are being cleared from BGP RIBs in a batch */
-PREDECL_DLIST(bgp_clearing_info);
+PREDECL_DLIST(rib_batch_info_list);
 
-/* Hash of peers in clearing info object */
-PREDECL_HASH(bgp_clearing_hash);
+/* Hash of peers in rib batch info object */
+PREDECL_HASH(rib_batch_peer_hash);
 
 /* Info about a batch of peers that need to be cleared from the RIB.
  * If many peers need to be cleared, we process them in batches, taking
  * one walk through the RIB for each batch. This is only used for "all"
  * afi/safis, typically when processing peer connection errors.
  */
-struct bgp_clearing_info {
+struct bgp_rib_batch_info {
 	/* Owning bgp instance */
 	struct bgp *bgp;
 
 	/* Hash of peers */
-	struct bgp_clearing_hash_head peers;
+	struct rib_batch_peer_hash_head peers;
 
 	/* Batch ID, for debugging/logging */
 	uint32_t id;
@@ -546,15 +546,15 @@ struct bgp_clearing_info {
 	/* TODO -- id, serial number, for debugging/logging? */
 
 	/* Linkage for list of batches per bgp */
-	struct bgp_clearing_info_item link;
+	struct rib_batch_info_list_item link;
 };
 
 /* Batch is open, new peers can be added */
-#define BGP_CLEARING_INFO_FLAG_OPEN  (1 << 0)
+#define BGP_RIB_BATCH_INFO_FLAG_OPEN (1 << 0)
 /* Batch is resuming iteration after yielding */
-#define BGP_CLEARING_INFO_FLAG_RESUME (1 << 1)
+#define BGP_RIB_BATCH_INFO_FLAG_RESUME (1 << 1)
 /* Batch has 'inner' resume info set */
-#define BGP_CLEARING_INFO_FLAG_INNER (1 << 2)
+#define BGP_RIB_BATCH_INFO_FLAG_INNER (1 << 2)
 
 /*
  * Helper macro to check if a SAFI supports nexthop prefer-global.
@@ -1092,7 +1092,7 @@ struct bgp {
 	struct event *t_conn_errors;
 
 	/* List of batches of peers being cleared from BGP RIBs */
-	struct bgp_clearing_info_head clearing_list;
+	struct rib_batch_info_list_head rib_batch_list;
 
 	struct timeval ebgprequirespolicywarning;
 #define FIFTEENMINUTE2USEC (int64_t)15 * 60 * 1000000
@@ -1829,8 +1829,8 @@ struct peer {
 #define PEER_FLAG_EXTENDED_LINK_BANDWIDTH (1ULL << 39)
 #define PEER_FLAG_DUAL_AS		  (1ULL << 40)
 #define PEER_FLAG_CAPABILITY_LINK_LOCAL	  (1ULL << 41)
-/* Peer is part of a batch clearing its routes */
-#define PEER_FLAG_CLEARING_BATCH (1ULL << 42)
+/* Peer is part of a batch clearing/processing its routes */
+#define PEER_FLAG_RIB_BATCH (1ULL << 42)
 /* BFD strict mode */
 #define PEER_FLAG_BFD_STRICT (1ULL << 43)
 /* https://datatracker.ietf.org/doc/html/draft-ietf-idr-entropy-label */
@@ -2266,8 +2266,8 @@ struct peer {
 	/* Add-Path Paths-Limit */
 	struct addpath_paths_limit addpath_paths_limit[AFI_MAX][SAFI_MAX];
 
-	/* Linkage for hash of clearing peers being cleared in a batch */
-	struct bgp_clearing_hash_item clear_hash_link;
+	/* Linkage for hash of peers being processed in a batch */
+	struct rib_batch_peer_hash_item rib_hash_link;
 
 	QOBJ_FIELDS;
 };
@@ -3330,10 +3330,10 @@ extern void bgp_session_reset_safe(struct peer *peer, struct listnode **nnode);
  */
 bool bgp_clearing_batch_add_peer(struct bgp *bgp, struct peer *peer);
 /* Check whether a dest's peer is relevant to a clearing batch */
-bool bgp_clearing_batch_check_peer(struct bgp_clearing_info *cinfo,
+bool bgp_clearing_batch_check_peer(struct bgp_rib_batch_info *cinfo,
 				   const struct peer *peer);
 /* Done with a peer clearing batch; deal with refcounts, free memory */
-void bgp_clearing_batch_completed(struct bgp_clearing_info *cinfo);
+void bgp_clearing_batch_completed(struct bgp_rib_batch_info *cinfo);
 /* Start a new batch of peers to clear */
 void bgp_clearing_batch_begin(struct bgp *bgp);
 /* End a new batch of peers to clear */

@@ -95,13 +95,13 @@ DEFINE_HOOK(bgp_routerid_update, (struct bgp *bgp, bool withdraw), (bgp, withdra
 DECLARE_DLIST(bgp_peer_conn_errlist, struct peer_connection, conn_err_link);
 
 /* List of info about peers that are being cleared from BGP RIBs in a batch */
-DECLARE_DLIST(bgp_clearing_info, struct bgp_clearing_info, link);
+DECLARE_DLIST(rib_batch_info_list, struct bgp_rib_batch_info, link);
 
-/* Hash of peers in clearing info object */
+/* Hash of peers in rib batch info object */
 static int peer_clearing_hash_cmp(const struct peer *p1, const struct peer *p2);
 static uint32_t peer_clearing_hashfn(const struct peer *p1);
 
-DECLARE_HASH(bgp_clearing_hash, struct peer, clear_hash_link,
+DECLARE_HASH(rib_batch_peer_hash, struct peer, rib_hash_link,
 	     peer_clearing_hash_cmp, peer_clearing_hashfn);
 
 /* BGP process wide configuration.  */
@@ -3933,7 +3933,7 @@ peer_init:
 	/* Init peer connection error info */
 	pthread_mutex_init(&bgp->peer_errs_mtx, NULL);
 	bgp_peer_conn_errlist_init(&bgp->peer_conn_errlist);
-	bgp_clearing_info_init(&bgp->clearing_list);
+	rib_batch_info_list_init(&bgp->rib_batch_list);
 
 	return bgp;
 }
@@ -4338,7 +4338,7 @@ int bgp_delete(struct bgp *bgp)
 	struct bgpevpn *vpn = NULL;
 	struct graceful_restart_info *gr_info;
 	struct bgp *bgp_default = bgp_get_default();
-	struct bgp_clearing_info *cinfo;
+	struct bgp_rib_batch_info *cinfo;
 	struct peer_connection *connection;
 	uint32_t b_ann_cnt = 0, b_l2_cnt = 0;
 	uint32_t a_ann_cnt = 0, a_l2_cnt = 0;
@@ -4377,7 +4377,7 @@ int bgp_delete(struct bgp *bgp)
 	}
 
 	/* Cleanup for peer connection batching */
-	while ((cinfo = bgp_clearing_info_first(&bgp->clearing_list)) != NULL)
+	while ((cinfo = rib_batch_info_list_first(&bgp->rib_batch_list)) != NULL)
 		bgp_clearing_batch_completed(cinfo);
 
 	bgp_soft_reconfig_table_task_cancel(bgp, NULL, NULL);
@@ -4562,7 +4562,7 @@ int bgp_delete(struct bgp *bgp)
 	event_cancel(&bgp->t_conn_errors);
 
 	/* Cleanup for peer connection batching */
-	while ((cinfo = bgp_clearing_info_pop(&bgp->clearing_list)) != NULL)
+	while ((cinfo = rib_batch_info_list_pop(&bgp->rib_batch_list)) != NULL)
 		bgp_clearing_batch_completed(cinfo);
 
 /* TODO - Other memory may need to be freed - e.g., NHT */
@@ -9114,10 +9114,10 @@ void bgp_master_init(struct event_loop *master, const int buffer_size,
 	bm->rib_stale_time = BGP_DEFAULT_RIB_STALE_TIME;
 	bm->t_bgp_zebra_l2_vni = NULL;
 
-	bm->peer_clearing_batch_id = 1;
+	bm->rib_batch_id = 1;
 	/* TODO -- make these configurable */
 	bm->peer_conn_errs_dequeue_limit = BGP_CONN_ERROR_DEQUEUE_MAX;
-	bm->peer_clearing_batch_max_dests = BGP_CLEARING_BATCH_MAX_DESTS;
+	bm->rib_batch_max_dests = BGP_RIB_BATCH_MAX_DESTS;
 
 	bgp_mac_init();
 	/* init the rd id space.
@@ -9567,16 +9567,16 @@ static uint32_t peer_clearing_hashfn(const struct peer *p1)
  * the batch.
  */
 static void bgp_clearing_batch_free(struct bgp *bgp,
-				    struct bgp_clearing_info **pinfo)
+				    struct bgp_rib_batch_info **pinfo)
 {
-	struct bgp_clearing_info *cinfo = *pinfo;
+	struct bgp_rib_batch_info *cinfo = *pinfo;
 
-	if (bgp_clearing_info_anywhere(cinfo))
-		bgp_clearing_info_del(&bgp->clearing_list, cinfo);
+	if (rib_batch_info_list_anywhere(cinfo))
+		rib_batch_info_list_del(&bgp->rib_batch_list, cinfo);
 
-	bgp_clearing_hash_fini(&cinfo->peers);
+	rib_batch_peer_hash_fini(&cinfo->peers);
 
-	XFREE(MTYPE_CLEARING_BATCH, *pinfo);
+	XFREE(MTYPE_BGP_RIB_BATCH, *pinfo);
 }
 
 /*
@@ -9584,7 +9584,7 @@ static void bgp_clearing_batch_free(struct bgp *bgp,
  */
 static void bgp_clearing_peer_done(struct peer *peer)
 {
-	UNSET_FLAG(peer->flags, PEER_FLAG_CLEARING_BATCH);
+	UNSET_FLAG(peer->flags, PEER_FLAG_RIB_BATCH);
 
 	/* Tickle FSM to start moving again */
 	BGP_EVENT_ADD(peer->connection, Clearing_Completed);
@@ -9597,24 +9597,24 @@ static void bgp_clearing_peer_done(struct peer *peer)
  */
 void bgp_clearing_batch_begin(struct bgp *bgp)
 {
-	struct bgp_clearing_info *cinfo;
+	struct bgp_rib_batch_info *cinfo;
 
 	if (event_is_scheduled(bgp->clearing_end))
 		return;
 
-	cinfo = XCALLOC(MTYPE_CLEARING_BATCH, sizeof(struct bgp_clearing_info));
+	cinfo = XCALLOC(MTYPE_BGP_RIB_BATCH, sizeof(struct bgp_rib_batch_info));
 
 	cinfo->bgp = bgp;
-	cinfo->id = bm->peer_clearing_batch_id++;
+	cinfo->id = bm->rib_batch_id++;
 
 	/* Init hash of peers */
-	bgp_clearing_hash_init(&cinfo->peers);
+	rib_batch_peer_hash_init(&cinfo->peers);
 
 	/* Batch is open for more peers */
-	SET_FLAG(cinfo->flags, BGP_CLEARING_INFO_FLAG_OPEN);
+	SET_FLAG(cinfo->flags, BGP_RIB_BATCH_INFO_FLAG_OPEN);
 
 	/* coverity[leaked_storage] - cinfo is stored in clearing_list */
-	bgp_clearing_info_add_head(&bgp->clearing_list, cinfo);
+	rib_batch_info_list_add_head(&bgp->rib_batch_list, cinfo);
 }
 
 /*
@@ -9622,22 +9622,22 @@ void bgp_clearing_batch_begin(struct bgp *bgp)
  */
 static void bgp_clearing_batch_end(struct bgp *bgp)
 {
-	struct bgp_clearing_info *cinfo;
+	struct bgp_rib_batch_info *cinfo;
 
 	if (event_is_scheduled(bgp->clearing_end))
 		return;
 
-	cinfo = bgp_clearing_info_first(&bgp->clearing_list);
+	cinfo = rib_batch_info_list_first(&bgp->rib_batch_list);
 	if (!cinfo)
 		return; /* Nothing to do */
 
-	assert(CHECK_FLAG(cinfo->flags, BGP_CLEARING_INFO_FLAG_OPEN));
+	assert(CHECK_FLAG(cinfo->flags, BGP_RIB_BATCH_INFO_FLAG_OPEN));
 
 	/* Batch is closed */
-	UNSET_FLAG(cinfo->flags, BGP_CLEARING_INFO_FLAG_OPEN);
+	UNSET_FLAG(cinfo->flags, BGP_RIB_BATCH_INFO_FLAG_OPEN);
 
 	/* If we have no peers to examine, just discard the batch info */
-	if (bgp_clearing_hash_count(&cinfo->peers) == 0) {
+	if (rib_batch_peer_hash_count(&cinfo->peers) == 0) {
 		bgp_clearing_batch_free(bgp, &cinfo);
 		return;
 	}
@@ -9669,19 +9669,19 @@ void bgp_clearing_batch_end_event_start(struct bgp *bgp)
 }
 
 /* Check whether a dest's peer is relevant to a clearing batch */
-bool bgp_clearing_batch_check_peer(struct bgp_clearing_info *cinfo,
+bool bgp_clearing_batch_check_peer(struct bgp_rib_batch_info *cinfo,
 				   const struct peer *peer)
 {
 	struct peer *p;
 
-	p = bgp_clearing_hash_find(&cinfo->peers, peer);
+	p = rib_batch_peer_hash_find(&cinfo->peers, peer);
 	return (p != NULL);
 }
 
 /*
  * Done with a peer clearing batch; deal with refcounts, free memory
  */
-void bgp_clearing_batch_completed(struct bgp_clearing_info *cinfo)
+void bgp_clearing_batch_completed(struct bgp_rib_batch_info *cinfo)
 {
 	struct peer *peer;
 	uint32_t idx = 0;
@@ -9694,7 +9694,7 @@ void bgp_clearing_batch_completed(struct bgp_clearing_info *cinfo)
 	event_cancel_event(bm->master, &cinfo->t_sched);
 
 	/* Remove all peers and un-ref */
-	while ((peer = bgp_clearing_hash_pop_all(&cinfo->peers, &idx)) != NULL)
+	while ((peer = rib_batch_peer_hash_pop_all(&cinfo->peers, &idx)) != NULL)
 		bgp_clearing_peer_done(peer);
 
 	/* Free memory */
@@ -9706,17 +9706,17 @@ void bgp_clearing_batch_completed(struct bgp_clearing_info *cinfo)
  */
 bool bgp_clearing_batch_add_peer(struct bgp *bgp, struct peer *peer)
 {
-	struct bgp_clearing_info *cinfo;
+	struct bgp_rib_batch_info *cinfo;
 
-	cinfo = bgp_clearing_info_first(&bgp->clearing_list);
+	cinfo = rib_batch_info_list_first(&bgp->rib_batch_list);
 
-	if (cinfo && CHECK_FLAG(cinfo->flags, BGP_CLEARING_INFO_FLAG_OPEN)) {
-		if (!CHECK_FLAG(peer->flags, PEER_FLAG_CLEARING_BATCH)) {
+	if (cinfo && CHECK_FLAG(cinfo->flags, BGP_RIB_BATCH_INFO_FLAG_OPEN)) {
+		if (!CHECK_FLAG(peer->flags, PEER_FLAG_RIB_BATCH)) {
 			/* Add a peer ref */
 			peer_lock(peer);
 
-			bgp_clearing_hash_add(&cinfo->peers, peer);
-			SET_FLAG(peer->flags, PEER_FLAG_CLEARING_BATCH);
+			rib_batch_peer_hash_add(&cinfo->peers, peer);
+			SET_FLAG(peer->flags, PEER_FLAG_RIB_BATCH);
 
 			if (bgp_debug_neighbor_events(peer))
 				zlog_debug("%s: peer %pBP batched in %#x", __func__,
