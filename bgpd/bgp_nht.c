@@ -358,6 +358,29 @@ int bgp_find_or_add_nexthop(struct bgp *bgp_route, struct bgp *bgp_nexthop, afi_
 				   &p.u.prefix6))
 			ifindex = pi->peer->connection->su.sin6.sin6_scope_id;
 
+		/*
+		 * A route may carry a link-local nexthop that differs from
+		 * the peer address (e.g. set by route-map, or from a
+		 * global-address peer advertising an LL nexthop).  Without
+		 * an ifindex the BNC is registered with zebra NHT, which
+		 * resolves the ambiguous fe80::/64 against an arbitrary
+		 * interface.  If that interface goes down, zebra marks the
+		 * nexthop unreachable and BGP withdraws routes even though
+		 * the real peer interface is still up.
+		 *
+		 * Derive ifindex from the peer's connected interface so
+		 * the BNC is tracked locally via interface events instead.
+		 * Skip when the nexthop equals the peer address to avoid
+		 * conflicting with the peer-tracking BNC (ifindex 0) that
+		 * is created before the TCP handshake for explicit LL
+		 * peers.
+		 */
+		if (afi == AFI_IP6 && !ifindex && IN6_IS_ADDR_LINKLOCAL(&p.u.prefix6) &&
+		    pi->peer->connection->su.sa.sa_family == AF_INET6 &&
+		    !IPV6_ADDR_SAME(&pi->peer->connection->su.sin6.sin6_addr, &p.u.prefix6) &&
+		    pi->peer->nexthop.ifp)
+			ifindex = pi->peer->nexthop.ifp->ifindex;
+
 		if (!is_bgp_static_route && orig_prefix && prefix_same(&p, orig_prefix) &&
 		    CHECK_FLAG(bgp_route->flags, BGP_FLAG_IMPORT_CHECK)) {
 			if (BGP_DEBUG(nht, NHT)) {
@@ -832,13 +855,28 @@ static void bgp_nht_ifp_table_handle(struct bgp *bgp,
 		 */
 		bnc->metric = 0;
 		if (up) {
+			struct nexthop *nh;
+
+			/* Clear PEER_NOTIFIED so evaluate_paths() always
+			 * re-notifies the FSM on an UP transition.
+			 */
+			UNSET_FLAG(bnc->flags, BGP_NEXTHOP_PEER_NOTIFIED);
 			SET_FLAG(bnc->flags, BGP_NEXTHOP_VALID);
 			SET_FLAG(bnc->change_flags, BGP_NEXTHOP_CHANGED);
+
+			bnc_nexthop_free(bnc);
+			nh = nexthop_new();
+			nh->type = NEXTHOP_TYPE_IFINDEX;
+			nh->ifindex = ifp->ifindex;
+			nh->vrf_id = ifp->vrf->vrf_id;
+			bnc->nexthop = nh;
 			bnc->nexthop_num = 1;
 		} else {
 			UNSET_FLAG(bnc->flags, BGP_NEXTHOP_PEER_NOTIFIED);
 			UNSET_FLAG(bnc->flags, BGP_NEXTHOP_VALID);
 			SET_FLAG(bnc->change_flags, BGP_NEXTHOP_CHANGED);
+			bnc_nexthop_free(bnc);
+			bnc->nexthop = NULL;
 			bnc->nexthop_num = 0;
 		}
 
@@ -1252,6 +1290,14 @@ static void register_zebra_rnh(struct bgp_nexthop_cache *bnc)
 
 	if (bnc->ifindex_ipv6_ll) {
 		SET_FLAG(bnc->flags, BGP_NEXTHOP_REGISTERED);
+		/*
+		 * Explicit LL peers (conf_if set) already get validated
+		 * via bgp_nht_interface_events(), so this is a no-op
+		 * for them.  Global-address peers with LL nexthops do
+		 * not go through that path, so they need this.
+		 */
+		event_add_event(bm->master, bgp_nht_ifp_initial, bnc->bgp, bnc->ifindex_ipv6_ll,
+				NULL);
 		return;
 	}
 
