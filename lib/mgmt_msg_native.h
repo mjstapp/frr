@@ -711,6 +711,9 @@ struct mgmt_msg_cfg_apply_req {
  * struct mgmt_msg_cfg_apply_reply - Signal the config has been applied.
  *
  * @refer_id: The transaction ID which was applied.
+ *
+ * Optional variable data after the header contains a NUL-terminated
+ * informational message string from the backend's northbound callbacks.
  */
 struct mgmt_msg_cfg_apply_reply {
 	struct mgmt_msg_header;
@@ -977,13 +980,13 @@ extern int vmgmt_msg_native_send_error(struct msg_conn *conn,
  *	The secondary data or NULL if there was an error decoding (i.e., the
  *	message is corrupt).
  */
-#define mgmt_msg_native_data_decode(msg, msglen)                                                   \
-	({                                                                                         \
-		size_t _m__len = (msglen) - sizeof(*msg);                                          \
-		const char *_m__data = msg->data + msg->vsplit;                                    \
-		if (!msg->vsplit || msg->vsplit > _m__len || _m__data[-1] != 0)                    \
-			_m__data = NULL;                                                           \
-		_m__data;                                                                          \
+#define mgmt_msg_native_data_decode(msg, msglen)                                                  \
+	({                                                                                        \
+		size_t _m__len = (msglen) - sizeof(*msg);                                         \
+		const char *_m__data = msg->data + msg->vsplit;                                   \
+		if (!msg->vsplit || msg->vsplit >= _m__len || _m__data[-1] != 0)                  \
+			_m__data = NULL;                                                          \
+		_m__data;                                                                         \
 	})
 
 /**

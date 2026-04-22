@@ -573,8 +573,7 @@ failed:
 /* Apply Config Message Handling */
 /* ----------------------------- */
 
-static int mgmt_be_send_apply_reply(struct mgmt_be_client *client_ctx,
-				    uint64_t txn_id, bool success,
+static int mgmt_be_send_apply_reply(struct mgmt_be_client *client_ctx, uint64_t txn_id,
 				    const char *error_if_any)
 {
 	struct mgmt_msg_cfg_apply_reply *msg;
@@ -584,6 +583,9 @@ static int mgmt_be_send_apply_reply(struct mgmt_be_client *client_ctx,
 					MTYPE_MSG_NATIVE_CFG_APPLY_REPLY);
 	msg->code = MGMT_MSG_CODE_CFG_APPLY_REPLY;
 	msg->refer_id = txn_id;
+
+	if (error_if_any && error_if_any[0])
+		mgmt_msg_native_add_str(msg, error_if_any);
 
 	debug_be_client("Sending CFG_APPLY_REPLY txn-id %" PRIu64, txn_id);
 
@@ -598,7 +600,7 @@ static bool mgmt_be_txn_proc_cfgapply(struct mgmt_be_txn_ctx *txn)
 	struct timeval apply_nb_cfg_start;
 	struct timeval apply_nb_cfg_end;
 	unsigned long apply_nb_cfg_tm;
-	char err_buf[BUFSIZ];
+	char err_buf[BUFSIZ] = {};
 	bool disconnect;
 
 	assert(txn && txn->client);
@@ -621,7 +623,8 @@ static bool mgmt_be_txn_proc_cfgapply(struct mgmt_be_txn_ctx *txn)
 	client_ctx->num_apply_nb_cfg++;
 	txn->nb_txn = NULL;
 
-	disconnect = !!mgmt_be_send_apply_reply(client_ctx, txn->txn_id, true, NULL);
+	disconnect = !!mgmt_be_send_apply_reply(client_ctx, txn->txn_id,
+						err_buf[0] ? err_buf : NULL);
 
 	debug_be_client("Nb-apply-duration %lu (avg: %Lu) uSec", apply_nb_cfg_tm,
 			client_ctx->avg_apply_nb_cfg_tm);
