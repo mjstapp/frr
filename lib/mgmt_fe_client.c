@@ -413,6 +413,7 @@ static void fe_client_handle_native_msg(struct mgmt_fe_client *client,
 	struct mgmt_msg_header *orig_msg = NULL;
 	const char *xpath = NULL;
 	const char *data = NULL;
+	const char *info = NULL;
 	uint16_t orig_code;
 	size_t dlen;
 
@@ -567,13 +568,20 @@ generic_error_handler:
 		if (!session->client->cbs.commit_config_notify)
 			break;
 		commit_msg = (typeof(commit_msg))msg;
+		if (msg_len > sizeof(*commit_msg)) {
+			if (!MGMT_MSG_VALIDATE_NUL_TERM(commit_msg, msg_len)) {
+				log_err_fe_client("Corrupt commit-reply msg recv");
+				break;
+			}
+			info = (const char *)(commit_msg + 1);
+		}
 		session->client->cbs.commit_config_notify(client, client->user_data,
 							  session->client_id, session->session_id,
 							  session->user_ctx, msg->req_id, true,
 							  commit_msg->source, commit_msg->target,
 							  commit_msg->action ==
 								  MGMT_MSG_COMMIT_VALIDATE,
-							  commit_msg->unlock, NULL);
+							  commit_msg->unlock, info);
 
 		break;
 	case MGMT_MSG_CODE_LOCK_REPLY:
@@ -611,19 +619,25 @@ generic_error_handler:
 
 		edit_msg = (typeof(edit_msg))msg;
 		if (msg_len < sizeof(*edit_msg)) {
-			log_err_fe_client("Corrupt edit-reply msg recv");
+			log_err_fe_client("Corrupt edit-reply msg recv: short len");
 			break;
 		}
 
 		xpath = mgmt_msg_native_xpath_decode(edit_msg, msg_len);
 		if (!xpath) {
-			log_err_fe_client("Corrupt edit-reply msg recv");
+			log_err_fe_client("Corrupt edit-reply msg recv: no xpath");
+			break;
+		}
+
+		info = mgmt_msg_native_data_decode(edit_msg, msg_len);
+		if (info && !MGMT_MSG_VALIDATE_NUL_TERM(edit_msg, msg_len)) {
+			log_err_fe_client("Corrupt edit-reply msg recv: bad info");
 			break;
 		}
 
 		session->client->cbs.edit_notify(client, client->user_data, session->client_id,
 						 msg->refer_id, session->user_ctx, msg->req_id,
-						 xpath, 0, NULL);
+						 xpath, 0, info);
 		break;
 	case MGMT_MSG_CODE_RPC_REPLY:
 		if (!session->client->cbs.rpc_notify)

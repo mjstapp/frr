@@ -467,7 +467,7 @@ static void vty_mgmt_handle_commit_config_reply(struct mgmt_fe_client *client, u
 						uintptr_t session_ctx, uint64_t req_id,
 						bool success, enum mgmt_ds_id src_ds_id,
 						enum mgmt_ds_id dst_ds_id, bool validate_only,
-						bool unlock, char *errmsg_if_any)
+						bool unlock, const char *errmsg_if_any)
 {
 	struct vty *vty;
 
@@ -483,8 +483,8 @@ static void vty_mgmt_handle_commit_config_reply(struct mgmt_fe_client *client, u
 		debug_fe_client("COMMIT_CONFIG request for client 0x%" PRIx64 " req-id %" PRIu64
 				" was successfull%s%s",
 				client_id, req_id, errmsg_if_any ? ": " : "", errmsg_if_any ?: "");
-		if (!unlock && errmsg_if_any)
-			vty_out(vty, "MGMTD: %s\n", errmsg_if_any);
+		if (errmsg_if_any)
+			vty_out(vty, "%% Configuration applied with notes:\n%s\n", errmsg_if_any);
 	}
 
 	if (unlock) {
@@ -604,11 +604,13 @@ static int vty_mgmt_handle_edit_reply(struct mgmt_fe_client *client, uintptr_t u
 {
 	struct vty *vty = (struct vty *)session_ctx;
 
-	if (!error)
+	if (!error) {
 		debug_fe_client("EDIT request for client 0x%" PRIx64 " req-id %" PRIu64
 				" was successful, xpath: %s",
 				client_id, req_id, xpath);
-	else {
+		if (errstr)
+			vty_out(vty, "%% Configuration applied with notes:\n%s\n", errstr);
+	} else {
 		debug_fe_client("EDIT request for client 0x%" PRIx64 " req-id %" PRIu64
 				" failed xpath: %s: %d: %s",
 				client_id, req_id, xpath, error, errstr);

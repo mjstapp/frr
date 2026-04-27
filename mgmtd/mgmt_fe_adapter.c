@@ -623,7 +623,7 @@ int mgmt_fe_adapter_txn_error(uint64_t txn_id, uint64_t req_id, bool short_circu
 
 static void fe_session_send_commit_reply(struct mgmt_fe_session_ctx *session, uint64_t req_id,
 					 uint8_t source, uint8_t target, uint8_t action,
-					 bool unlock)
+					 bool unlock, const char *info)
 {
 	struct mgmt_msg_commit_reply *msg;
 	int ret;
@@ -637,6 +637,9 @@ static void fe_session_send_commit_reply(struct mgmt_fe_session_ctx *session, ui
 	msg->target = target;
 	msg->action = action;
 	msg->unlock = unlock;
+
+	if (info && info[0])
+		mgmt_msg_native_add_str(msg, info);
 
 	_dbg("Sending commit-reply session-id %Lu on %s req-id %Lu source-ds: %s target-ds: %s action: %u unlock: %d",
 	     session->session_id, session->adapter->name, req_id, mgmt_ds_id2name(source),
@@ -705,7 +708,8 @@ int mgmt_fe_send_commit_cfg_reply(uint64_t session_id, uint64_t txn_id, enum mgm
 	fe_session_compute_commit_timers(&session->adapter->cmt_stats);
 
 	if (result == MGMTD_SUCCESS || result == MGMTD_NO_CFG_CHANGES)
-		fe_session_send_commit_reply(session, req_id, src_ds_id, dst_ds_id, action, unlock);
+		fe_session_send_commit_reply(session, req_id, src_ds_id, dst_ds_id, action, unlock,
+					     error_if_any);
 	else {
 		ret = fe_session_send_error(
 			session, req_id, false, mgmt_result_to_error(result),
