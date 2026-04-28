@@ -23,6 +23,7 @@ from lib import topotest
 from lib.topogen import TopoRouter, Topogen, get_topogen
 from lib.topolog import logger
 
+
 def setup_module(mod):
     topodef = {"s1": ("c1", "r1"), "s2": ("r1", "r2")}
     tgen = Topogen(topodef, mod.__name__)
@@ -58,6 +59,7 @@ def test_bgp_evpn_route_map_set_gateway_ip():
         pytest.skip(tgen.errors)
 
     r2: TopoRouter = tgen.gears["r2"]
+
     def _bgp_converge():
         output = json.loads(r2.vtysh_cmd("show bgp l2vpn evpn all overlay json"))
         expected = {

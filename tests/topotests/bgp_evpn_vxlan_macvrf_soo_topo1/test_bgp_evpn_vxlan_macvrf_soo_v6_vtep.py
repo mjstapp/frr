@@ -168,7 +168,8 @@ def setup_module(mod):
     router_list = tgen.routers()
     for rname, router in router_list.items():
         router.load_config(
-            TopoRouter.RD_ZEBRA, os.path.join(CWD, "{}/zebra_v6_vtep.conf".format(rname))
+            TopoRouter.RD_ZEBRA,
+            os.path.join(CWD, "{}/zebra_v6_vtep.conf".format(rname)),
         )
         router.load_config(
             TopoRouter.RD_OSPF6, os.path.join(CWD, "{}/ospfd6.conf".format(rname))
