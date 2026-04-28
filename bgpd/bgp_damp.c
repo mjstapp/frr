@@ -493,6 +493,8 @@ void bgp_damp_info_clean(struct bgp *bgp, struct bgp_damp_config *bdc,
 		list = &bdc->reuse_list[i];
 		while ((bdi = SLIST_FIRST(list)) != NULL) {
 			if (bdi->lastrecord == BGP_RECORD_UPDATE) {
+				bgp_path_info_unset_flag(bdi->dest, bdi->path,
+							 BGP_PATH_HISTORY | BGP_PATH_DAMPED);
 				bgp_aggregate_increment(bgp,
 							bgp_dest_get_prefix(
 								bdi->dest),
