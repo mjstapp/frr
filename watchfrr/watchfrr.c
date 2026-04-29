@@ -1041,7 +1041,7 @@ static FRR_NORETURN void sigint(void)
 
 static int valid_command(const char *cmd)
 {
-	char *p;
+	const char *p;
 
 	if (cmd == NULL)
 		return 0;
