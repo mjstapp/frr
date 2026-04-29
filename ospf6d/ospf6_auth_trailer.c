@@ -553,6 +553,17 @@ int ospf6_auth_check_digest(struct ospf6_header *oh, struct ospf6_interface *oi,
 		return OSPF6_AUTH_VALIDATE_FAILURE;
 
 	hash_len = keychain_get_hash_len(hash_algo);
+	auth_len = ntohs(ospf6_auth->length);
+
+	/* Validate auth length before using data */
+	if (auth_len != OSPF6_AUTH_HDR_MIN_SIZE + hash_len) {
+		if (IS_OSPF6_DEBUG_AUTH_RX)
+			zlog_err("RECV[%s]: Auth len mismatch for %s: received %u",
+				 oi->interface->name, ospf6_message_type(oh->type),
+				 auth_len);
+		return OSPF6_AUTH_VALIDATE_FAILURE;
+	}
+
 	memset(apad, 0, sizeof(apad));
 	memset(temp_hash, 0, sizeof(temp_hash));
 
@@ -560,8 +571,6 @@ int ospf6_auth_check_digest(struct ospf6_header *oh, struct ospf6_interface *oi,
 	memcpy(apad, src, ipv6_addr_size);
 	memcpy(apad + ipv6_addr_size, ospf6_hash_apad_max,
 	       (hash_len - ipv6_addr_size));
-
-	auth_len = ntohs(ospf6_auth->length);
 
 	memcpy(temp_hash, ospf6_auth->data, hash_len);
 	memcpy(ospf6_auth->data, apad, hash_len);
