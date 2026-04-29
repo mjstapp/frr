@@ -682,9 +682,10 @@ static const char *ecommunity_gettoken(const char *str, void *eval_ptr,
 	/* IPv6 case : look for last ':' */
 	if (*token == ecommunity_token_rt6 ||
 	    *token == ecommunity_token_val6) {
-		char *limit;
+		const char *limit;
 
-		limit = endptr = strrchr(p, ':');
+		limit = strrchr(p, ':');
+		endptr = (char *)limit;
 		if (!endptr)
 			goto error;
 
