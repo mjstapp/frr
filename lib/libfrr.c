@@ -688,7 +688,7 @@ static void frr_mkdir(const char *path, bool strip)
 	struct zprivs_ids_t ids;
 
 	if (strip) {
-		char *slash = strrchr(path, '/');
+		const char *slash = strrchr(path, '/');
 		size_t plen;
 		if (!slash)
 			return;

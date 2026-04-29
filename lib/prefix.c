@@ -604,7 +604,7 @@ int str2prefix_ipv4(const char *str, struct prefix_ipv4 *p)
 {
 	int ret;
 	int plen;
-	char *pnt;
+	const char *pnt;
 	char *cp;
 
 	/* Find slash inside string. */
@@ -649,7 +649,7 @@ int str2prefix_eth(const char *str, struct prefix_eth *p)
 {
 	int ret = 0;
 	int plen = 48;
-	char *pnt;
+	const char *pnt;
 	char *cp = NULL;
 	const char *str_addr = str;
 	unsigned int a[6];
@@ -774,7 +774,7 @@ void prefix_ipv6_free(struct prefix_ipv6 **p)
 /* If given string is valid return 1 else return 0 */
 int str2prefix_ipv6(const char *str, struct prefix_ipv6 *p)
 {
-	char *pnt;
+	const char *pnt;
 	char *cp;
 	int ret;
 
