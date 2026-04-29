@@ -1375,7 +1375,7 @@ DEFPY_YANG (no_interface,
 
 static void netns_ifname_split(const char *xpath, char *ifname, char *vrfname)
 {
-	char *delim;
+	const char *delim;
 	int len;
 
 	assert(vrf_is_backend_netns());

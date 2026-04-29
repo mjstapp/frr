@@ -216,7 +216,7 @@ distributed_bfd_init(const char *arg)
 	} sa;
 
 	/* Basic parsing: find ':' to figure out type part and address part. */
-	sptr = strchr(arg, ':');
+	sptr = strchr((char *)arg, ':');
 	if (sptr == NULL) {
 		fprintf(stderr, "invalid BFD data plane socket: %s\n", arg);
 		exit(1);

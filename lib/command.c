@@ -1161,7 +1161,7 @@ static int handle_pipe_action(struct vty *vty, const char *cmd_in,
 {
 	/* look for `|` */
 	char *orig, *working, *token, *u;
-	char *pipe = strstr(cmd_in, "| ");
+	const char *pipe = strstr(cmd_in, "| ");
 	int ret = 0;
 
 	if (!pipe)
