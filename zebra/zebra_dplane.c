@@ -4576,7 +4576,7 @@ static int dplane_ctx_pw_init(struct zebra_dplane_ctx *ctx,
  * @rule:			PBR rule
  */
 static void dplane_ctx_rule_init_single(struct dplane_ctx_rule *dplane_rule,
-					struct zebra_pbr_rule *rule)
+					const struct zebra_pbr_rule *rule)
 {
 	struct zebra_neigh_ent *n;
 
@@ -4870,6 +4870,11 @@ dplane_route_update_internal(struct route_node *rn,
 			}
 #endif	/* !HAVE_NETLINK */
 		}
+
+		/* Don't install adjacency/host-routes in local OS */
+		if (dplane_ctx_get_type(ctx) == ZEBRA_ROUTE_ADJACENCY)
+			dplane_ctx_set_skip_kernel(ctx);
+
 		/* Enqueue context for processing */
 		ret = dplane_update_enqueue(ctx);
 	}

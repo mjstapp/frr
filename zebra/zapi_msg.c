@@ -55,7 +55,7 @@
 #include "zebra/zebra_srv6.h"
 #include "zebra/zebra_neigh.h"
 
-DEFINE_MTYPE_STATIC(ZEBRA, RE_OPAQUE, "Route Opaque Data");
+DEFINE_MTYPE(ZEBRA, RE_OPAQUE, "Route Opaque Data");
 
 static int zapi_nhg_decode(struct stream *s, int cmd, struct zapi_nhg *api_nhg);
 
