@@ -163,12 +163,18 @@ static int ospf6_unknown_lsa_show(struct vty *vty, struct ospf6_lsa *lsa,
 	return 0;
 }
 
+static char *ospf6_unknown_lsa_get_prefix_str(struct ospf6_lsa *lsa, char *buf, int buflen,
+					      int pos)
+{
+	return NULL;
+}
+
 static struct ospf6_lsa_handler unknown_handler = {
 	.lh_type = OSPF6_LSTYPE_UNKNOWN,
 	.lh_name = "Unknown",
 	.lh_short_name = "Unk",
 	.lh_show = ospf6_unknown_lsa_show,
-	.lh_get_prefix_str = NULL,
+	.lh_get_prefix_str = ospf6_unknown_lsa_get_prefix_str,
 	.lh_debug = 0 /* No default debug */
 };
 
@@ -189,8 +195,12 @@ struct ospf6_lsa_handler *ospf6_get_lsa_handler(uint16_t type)
 	struct ospf6_lsa_handler *handler = NULL;
 	unsigned int index = ntohs(type) & OSPF6_LSTYPE_FCODE_MASK;
 
-	if (index < array_size(lsa_handlers))
+	if (index < array_size(lsa_handlers)) {
 		handler = lsa_handlers[index];
+		/* Force mismatching type to unknown */
+		if (type != handler->lh_type)
+			handler = NULL;
+	}
 
 	if (handler == NULL)
 		handler = &unknown_handler;
@@ -506,6 +516,7 @@ void ospf6_lsa_show_summary(struct vty *vty, struct ospf6_lsa *lsa,
 	char buf[64];
 	int cnt = 0;
 	json_object *json_obj = NULL;
+	const char *pfxstr;
 
 	assert(lsa);
 	assert(lsa->header);
@@ -525,6 +536,10 @@ void ospf6_lsa_show_summary(struct vty *vty, struct ospf6_lsa *lsa,
 	case OSPF6_LSTYPE_INTER_ROUTER:
 	case OSPF6_LSTYPE_AS_EXTERNAL:
 	case OSPF6_LSTYPE_TYPE_7:
+		pfxstr = handler->lh_get_prefix_str(lsa, buf, sizeof(buf), 0);
+		if (pfxstr == NULL)
+			pfxstr = "";
+
 		if (use_json) {
 			json_object_string_add(
 				json_obj, "type",
@@ -537,18 +552,13 @@ void ospf6_lsa_show_summary(struct vty *vty, struct ospf6_lsa *lsa,
 			json_object_int_add(
 				json_obj, "seqNum",
 				(unsigned long)ntohl(lsa->header->seqnum));
-			json_object_string_add(
-				json_obj, "payload",
-				handler->lh_get_prefix_str(lsa, buf,
-							   sizeof(buf), 0));
+			json_object_string_add(json_obj, "payload", pfxstr);
 			json_object_array_add(json_array, json_obj);
 		} else
 			vty_out(vty, "%-4s %-15s%-15s%4hu %8lx %30s\n",
 				ospf6_lstype_short_name(lsa->header->type), id,
 				adv_router, ospf6_lsa_age_current(lsa),
-				(unsigned long)ntohl(lsa->header->seqnum),
-				handler->lh_get_prefix_str(lsa, buf,
-							   sizeof(buf), 0));
+				(unsigned long)ntohl(lsa->header->seqnum), pfxstr);
 		break;
 	case OSPF6_LSTYPE_ROUTER:
 	case OSPF6_LSTYPE_NETWORK:
