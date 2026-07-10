@@ -110,9 +110,6 @@ struct route_show_ctx {
  */
 static struct route_show_ctx *resume_show_ctx;
 
-/* Max routes to show before yielding */
-uint32_t show_yield_limit = 1000;
-
 static int do_show_ip_route_ctx(struct vty *vty, struct zebra_vrf *zvrf,
 				struct route_show_ctx *ctx);
 static void vty_show_ip_route_detail(struct vty *vty, struct route_node *rn,
@@ -1154,7 +1151,7 @@ static int do_show_route_helper(struct vty *vty, struct zebra_vrf *zvrf,
 		}
 
 		/* Time to yield? */
-		if (ctx->curr_counter > show_yield_limit) {
+		if (ctx->curr_counter >= zrouter.show_yield_limit) {
 			ctx->total_counter += ctx->curr_counter;
 			ctx->curr_counter = 0;
 
@@ -4128,6 +4125,9 @@ static int config_write_protocol(struct vty *vty)
 	if (!zebra_nhg_recursive_use_backups())
 		vty_out(vty, "no zebra nexthop resolve-via-backup\n");
 
+	if (zrouter.show_yield_limit != ZEBRA_DEFAULT_SHOW_YIELD_LIMIT)
+		vty_out(vty, "zebra yield limit %u\n", zrouter.show_yield_limit);
+
 #ifdef HAVE_SCRIPTING
 	frrscript_names_config_write(vty);
 #endif
@@ -4455,6 +4455,23 @@ DEFUN_HIDDEN (show_frr,
 	return CMD_SUCCESS;
 }
 
+DEFPY (zebra_yield_limit,
+       zebra_yield_limit_cmd,
+       "[no] zebra yield limit ![(1-1000000)$limit]",
+       NO_STR
+       ZEBRA_STR
+       "Show yield/resume\n"
+       "Counter before yielding\n"
+       "Counter value\n")
+{
+	if (no)
+		zrouter.show_yield_limit = ZEBRA_DEFAULT_SHOW_YIELD_LIMIT;
+	else
+		zrouter.show_yield_limit = limit;
+
+	return CMD_SUCCESS;
+}
+
 #ifdef HAVE_NETLINK
 DEFUN_HIDDEN(zebra_kernel_netlink_batch_tx_buf,
 	     zebra_kernel_netlink_batch_tx_buf_cmd,
@@ -4663,4 +4680,6 @@ void zebra_vty_init(void)
 #endif /* HAVE_SCRIPTING */
 
 	install_element(VIEW_NODE, &zebra_show_routing_tables_summary_cmd);
+
+	install_element(CONFIG_NODE, &zebra_yield_limit_cmd);
 }

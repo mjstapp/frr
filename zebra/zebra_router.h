@@ -240,6 +240,10 @@ struct zebra_router {
 	uint64_t nexthop_weight_scale_value;
 
 	bool backup_nhs_installed;
+
+	/* Counter for show command yield/resume */
+#define ZEBRA_DEFAULT_SHOW_YIELD_LIMIT 1000
+	uint32_t show_yield_limit;
 };
 
 #define GRACEFUL_RESTART_TIME 60
