@@ -158,13 +158,17 @@ static struct zebra_neigh_ent *zebra_neigh_new(ns_id_t ns_id, ifindex_t ifindex,
 	return n;
 }
 
-static void zebra_neigh_pbr_rules_update(struct zebra_neigh_ent *n)
+static void zebra_neigh_pbr_rules_update(struct zebra_neigh_ent *n, bool install)
 {
 	struct zebra_pbr_rule *rule;
 	struct listnode *node;
 
-	for (ALL_LIST_ELEMENTS_RO(n->pbr_rule_list, node, rule))
-		dplane_pbr_rule_update(rule, rule);
+	for (ALL_LIST_ELEMENTS_RO(n->pbr_rule_list, node, rule)) {
+		if (install)
+			dplane_pbr_rule_add(rule);
+		else
+			dplane_pbr_rule_delete(rule);
+	}
 }
 
 static void zebra_neigh_free(struct zebra_neigh_ent *n)
@@ -175,7 +179,7 @@ static void zebra_neigh_free(struct zebra_neigh_ent *n)
 		 */
 		UNSET_FLAG(n->flags, ZEBRA_NEIGH_ENT_ACTIVE);
 		memset(&n->mac, 0, sizeof(n->mac));
-		zebra_neigh_pbr_rules_update(n);
+		zebra_neigh_pbr_rules_update(n, false);
 		return;
 	}
 	if (IS_ZEBRA_DEBUG_NEIGH)
@@ -252,7 +256,7 @@ void zebra_neigh_add(ns_id_t ns_id, struct interface *ifp, struct ipaddr *ip, st
 		SET_FLAG(n->flags, ZEBRA_NEIGH_ENT_ACTIVE);
 
 		/* update rules linked to the neigh */
-		zebra_neigh_pbr_rules_update(n);
+		zebra_neigh_pbr_rules_update(n, true);
 	} else {
 		zebra_neigh_new(ns_id, ifp->ifindex, ip, mac, ndm_state);
 	}
