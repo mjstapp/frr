@@ -2487,8 +2487,12 @@ static int nexthop_active(struct nexthop *nexthop, struct nhg_hash_entry *nhe,
 		/* DVNI/SVD Checks for EVPN routes */
 		if (nexthop->nh_label &&
 		    nexthop->nh_label_type == ZEBRA_LSP_EVPN &&
-		    !nexthop_set_evpn_dvni_svd(vrf_id, nexthop))
+		    !nexthop_set_evpn_dvni_svd(vrf_id, nexthop)) {
+			if (IS_ZEBRA_DEBUG_RIB_DETAILED)
+				zlog_debug("nexthop %pNHv EVPN but set_evpn_dvni_svd failed",
+					   nexthop);
 			return 0;
+		}
 
 		ifp = if_lookup_by_index(nexthop->ifindex, nexthop->vrf_id);
 		if (!ifp) {
@@ -2556,8 +2560,12 @@ static int nexthop_active(struct nexthop *nexthop, struct nhg_hash_entry *nhe,
 				nexthop_set_resolved(afi, nhlfe->nexthop, nexthop, policy, flags);
 				resolved = 1;
 			}
-			if (resolved)
+			if (resolved) {
+				if (IS_ZEBRA_DEBUG_RIB_DETAILED)
+					zlog_debug("nexthop %pNHv resolved via SRTE color",
+						   nexthop);
 				return 1;
+			}
 		}
 	}
 
@@ -2590,6 +2598,9 @@ static int nexthop_active(struct nexthop *nexthop, struct nhg_hash_entry *nhe,
 			zlog_debug("        %s: Table not found", __func__);
 		return 0;
 	}
+
+	/* TODO */
+	zlog_debug("%s: looking up %pFX, afi %s", __func__, &p, afi2str(afi));
 
 	rn = route_node_match(table, (struct prefix *)&p);
 	while (rn) {
@@ -3199,6 +3210,9 @@ static uint32_t nhg_nexthop_list_active_update(struct nhg_hash_entry *nhe,
 		 */
 		new_active = nhg_nexthop_active_check(nexthop,
 						      (is_backup ? NULL : nhe));
+		if (IS_ZEBRA_DEBUG_NHG_DETAIL)
+			zlog_debug("%s: nhe %pNG, nh %pNH prev_active %u new_active %u",
+				   __func__, nhe, nexthop, prev_active, new_active);
 
 		/*
 		 * We need to respect the multipath_num here
